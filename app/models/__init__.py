@@ -10,6 +10,8 @@ from app.models.permission import Permission, role_permissions
 from app.models.role import Role
 from app.models.section import Section
 from app.models.stock import OpeningStock, OpeningStockLine, StockAccount, StockMovement
+from app.models.receipt import Receipt, ReceiptLine
+from app.models.stock_return import StockReturn, StockReturnLine
 from app.models.store import Store
 from app.models.unit import Unit
 from app.models.user import User, user_roles, user_stores
@@ -30,6 +32,10 @@ __all__ = [
     "StockAccount",
     "StockBatch",
     "StockMovement",
+    "Receipt",
+    "ReceiptLine",
+    "StockReturn",
+    "StockReturnLine",
     "OpeningStock",
     "OpeningStockLine",
     "Store",

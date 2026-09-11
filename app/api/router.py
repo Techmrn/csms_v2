@@ -2,6 +2,8 @@ from fastapi import APIRouter
 
 from app.api.routes.health import router as health_router
 from app.api.routes.indents import router as indents_router
+from app.api.routes.receipts import router as receipts_router
+from app.api.routes.returns import router as returns_router
 from app.api.routes.masters import router as masters_router
 from app.api.routes.offices import router as offices_router
 from app.api.routes.stock import router as stock_router
@@ -14,3 +16,5 @@ api_router.include_router(stores_router)
 api_router.include_router(masters_router)
 api_router.include_router(stock_router)
 api_router.include_router(indents_router)
+api_router.include_router(receipts_router)
+api_router.include_router(returns_router)
