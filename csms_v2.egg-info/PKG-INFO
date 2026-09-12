@@ -8,3 +8,5 @@ Requires-Dist: sqlalchemy[asyncio]==2.0.52
 Requires-Dist: asyncpg==0.31.0
 Requires-Dist: alembic==1.19.2
 Requires-Dist: pydantic-settings==2.15.0
+Requires-Dist: pyjwt==2.13.0
+Requires-Dist: pwdlib[argon2]==0.3.1

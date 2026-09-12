@@ -69,7 +69,7 @@ class StockVerificationLine(Base):
 class Adjustment(TimestampMixin, Base):
     __tablename__ = "adjustments"
     __table_args__ = (
-        UniqueConstraint("verification_id", "adjustment_type", name="uq_adjustments_verification_type"),
+        UniqueConstraint("verification_id", name="uq_adjustments_verification"),
         CheckConstraint(
             "status in ('OPEN','AUTHORIZED','POSTED','CANCELLED')",
             name="ck_adjustments_status_valid",
