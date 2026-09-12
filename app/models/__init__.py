@@ -41,4 +41,12 @@ __all__ = [
     "Store",
     "Unit",
     "User",
+    "CentralStoreRequisition",
+    "CentralStoreRequisitionLine",
+    "StockTransfer",
+    "StockTransferLine",
+    "TransferDiscrepancy",
 ]
+
+from app.models.requisition import CentralStoreRequisition, CentralStoreRequisitionLine
+from app.models.transfer import StockTransfer, StockTransferLine, TransferDiscrepancy
