@@ -13,4 +13,5 @@ class ItemCreate(BaseModel):
 class ItemResponse(ItemCreate):
     id: int
     is_active: bool
+    is_temporary: bool
     model_config = ConfigDict(from_attributes=True)

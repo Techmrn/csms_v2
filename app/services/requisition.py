@@ -45,9 +45,6 @@ class RequisitionService:
         if office.office_type != "BRANCH":
             raise HTTPException(422, "Central Store requisitions must originate from a branch office")
 
-        # Authorization/scope is checked after business validation so an invalid
-        # requesting store (for example, Central Store) returns the correct
-        # business validation error instead of a store-assignment 403.
         await self.auth.require_store_assignment(payload.actor_id, payload.requesting_store_id)
 
         seen: set[int] = set()

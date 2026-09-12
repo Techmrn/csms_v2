@@ -11,6 +11,7 @@ from app.models.role import Role
 from app.models.section import Section
 from app.models.stock import OpeningStock, OpeningStockLine, StockAccount, StockMovement
 from app.models.receipt import Receipt, ReceiptLine
+from app.models.petty_purchase import PettyPurchase, PettyPurchaseLine
 from app.models.stock_return import StockReturn, StockReturnLine
 from app.models.store import Store
 from app.models.unit import Unit
@@ -34,6 +35,8 @@ __all__ = [
     "StockMovement",
     "Receipt",
     "ReceiptLine",
+    "PettyPurchase",
+    "PettyPurchaseLine",
     "StockReturn",
     "StockReturnLine",
     "OpeningStock",

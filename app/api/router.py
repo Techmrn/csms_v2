@@ -10,6 +10,7 @@ from app.api.routes.stock import router as stock_router
 from app.api.routes.stores import router as stores_router
 from app.api.routes.requisitions import router as requisitions_router
 from app.api.routes.transfers import router as transfers_router
+from app.api.routes.petty_purchases import router as petty_purchases_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -22,3 +23,4 @@ api_router.include_router(receipts_router)
 api_router.include_router(returns_router)
 api_router.include_router(requisitions_router)
 api_router.include_router(transfers_router)
+api_router.include_router(petty_purchases_router)

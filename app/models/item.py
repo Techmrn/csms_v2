@@ -23,6 +23,7 @@ class Item(TimestampMixin, Base):
     specification: Mapped[str | None] = mapped_column(nullable=True)
     remarks: Mapped[str | None] = mapped_column(nullable=True)
     is_active: Mapped[bool] = mapped_column(nullable=False, default=True)
+    is_temporary: Mapped[bool] = mapped_column(nullable=False, default=False)
 
     category: Mapped["Category"] = relationship()
     unit: Mapped["Unit"] = relationship()
