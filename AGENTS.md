@@ -58,3 +58,19 @@ This project is a clean rebuild of the Central Store Management System.
 - Asset petty purchase is prohibited.
 - Central Store petty purchase verification is performed by the Deputy Superintendent, Stock & Stores; branch-store petty purchase verification is performed by the Branch Head of that office.
 - Storekeepers create and post petty purchases for their assigned stores after required verification.
+
+## Stock verification / adjustment / unserviceable rules
+- Stock Verification is a physical-vs-system snapshot and does not itself change stock.
+- Storekeepers create/count verification records for their assigned stores.
+- The controlling officer authorizes the verification: Deputy Superintendent for Central Store; Branch Head for a branch store.
+- The person who records a verification cannot authorize the same verification.
+- A verification with no variance closes when authorized.
+- A verification with variance becomes AUTHORIZED and requires controlled Adjustment records before it closes.
+- Adjustment records are generated from the authorized verification, one per direction (`ADJUSTMENT_IN` and/or `ADJUSTMENT_OUT`) when needed.
+- Adjustment posting is performed by an assigned Storekeeper after controller authorization; the authorizer cannot post the same adjustment.
+- Adjustment posting creates immutable `ADJUSTMENT_IN` or `ADJUSTMENT_OUT` StockMovement rows.
+- The system re-checks the stock snapshot before adjustment posting; if stock changed after verification, posting is rejected and a new verification is required.
+- Unserviceable consumable stock is reported by a Storekeeper, verified/authorized by the controlling officer, and posted by an assigned Storekeeper.
+- Unserviceable consumables create `UNSERVICEABLE` StockMovement OUT rows.
+- Asset unserviceability remains an Asset lifecycle operation and is not handled by the consumable unserviceable module.
+- Verification, adjustment, and unserviceable operations are FY-specific and cannot post into a closed FY.

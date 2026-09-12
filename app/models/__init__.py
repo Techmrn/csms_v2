@@ -49,7 +49,21 @@ __all__ = [
     "StockTransfer",
     "StockTransferLine",
     "TransferDiscrepancy",
+    "StockVerification",
+    "StockVerificationLine",
+    "Adjustment",
+    "AdjustmentLine",
+    "UnserviceableMaterial",
+    "UnserviceableLine",
 ]
 
 from app.models.requisition import CentralStoreRequisition, CentralStoreRequisitionLine
 from app.models.transfer import StockTransfer, StockTransferLine, TransferDiscrepancy
+from app.models.stock_control import (
+    Adjustment,
+    AdjustmentLine,
+    StockVerification,
+    StockVerificationLine,
+    UnserviceableLine,
+    UnserviceableMaterial,
+)
