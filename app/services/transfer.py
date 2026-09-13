@@ -15,7 +15,8 @@ from app.models.office import Office
 from app.models.requisition import CentralStoreRequisition
 from app.models.stock import StockAccount, StockMovement
 from app.models.store import Store
-from app.models.transfer import StockTransfer, StockTransferLine, TransferDiscrepancy
+from app.models.transfer import StockTransfer, StockTransferLine, TransferDiscrepancy, TransferLineAsset
+from app.models.asset import Asset, AssetMovement
 from app.models.unit import Unit
 from app.repositories.stock import StockRepository
 from app.repositories.transfer import TransferRepository
@@ -71,7 +72,7 @@ class TransferService:
         if not (source_fy.start_date <= transfer_date <= source_fy.end_date):
             raise HTTPException(422, "Transfer date is outside the requisition financial year")
 
-        supplied = {line.requisition_line_id: line.dispatch_quantity for line in payload.lines}
+        supplied = {line.requisition_line_id: line for line in payload.lines}
         expected = {line.id: line for line in requisition.lines}
         missing = sorted(set(expected) - set(supplied))
         unknown = sorted(set(supplied) - set(expected))
@@ -82,13 +83,22 @@ class TransferService:
             )
 
         item_ids = sorted({line.item_id for line in requisition.lines})
+        item_categories = {}
         for item_id in item_ids:
-            await self._lock_stock_account(source_store.id, requisition.financial_year_id, item_id)
+            item = await self.session.get(Item, item_id)
+            cat = await self.session.get(Category, item.category_id)
+            item_categories[item_id] = cat.type
+            if cat.type != "ASSET":
+                await self._lock_stock_account(source_store.id, requisition.financial_year_id, item_id)
 
         dispatch_lines: list[StockTransferLine] = []
         total_dispatch = Decimal("0")
+        locked_assets_by_line = {}
+        global_asset_ids = set()
+        
         for req_line in requisition.lines:
-            qty = supplied[req_line.id]
+            supplied_line = supplied[req_line.id]
+            qty = supplied_line.dispatch_quantity
             approved = req_line.approved_quantity or Decimal("0")
             if qty < 0:
                 raise HTTPException(422, "Dispatch quantity cannot be negative")
@@ -97,30 +107,61 @@ class TransferService:
                     422,
                     f"Dispatch quantity {qty} exceeds approved quantity {approved} for item {req_line.item_id}",
                 )
-            available = await self.stock.current_balance(
-                source_store.id, requisition.financial_year_id, req_line.item_id
-            )
-            if qty > available:
-                raise HTTPException(
-                    409,
-                    f"Insufficient stock for item {req_line.item_id}: available {available}, requested dispatch {qty}",
-                )
+            
+            cat_type = item_categories[req_line.item_id]
+            if qty > 0:
+                if cat_type == "ASSET":
+                    asset_ids = supplied_line.asset_ids or []
+                    if not asset_ids:
+                        raise HTTPException(422, f"ASSET transfer requires asset_ids")
+                    if len(asset_ids) != int(qty):
+                        raise HTTPException(422, f"ASSET transfer quantity mismatch")
+                    if len(asset_ids) != len(set(asset_ids)):
+                        raise HTTPException(422, f"ASSET transfer contains duplicate asset IDs in the same line")
+                    for aid in asset_ids:
+                        if aid in global_asset_ids:
+                            raise HTTPException(422, f"Asset ID {aid} cannot be transferred multiple times in the same transaction")
+                        global_asset_ids.add(aid)
+                    
+                    locked_assets = []
+                    for aid in asset_ids:
+                        asset_row = await self.session.scalar(select(Asset).where(Asset.id == aid).with_for_update())
+                        if not asset_row:
+                            raise HTTPException(404, f"Asset ID {aid} not found")
+                        if asset_row.item_id != req_line.item_id:
+                            raise HTTPException(422, f"Asset ID {aid} does not match item")
+                        if asset_row.current_store_id != source_store.id:
+                            raise HTTPException(422, f"Asset ID {aid} is not in source store")
+                        if asset_row.status != "IN_STOCK":
+                            raise HTTPException(422, f"Asset ID {aid} is not IN_STOCK")
+                        locked_assets.append(asset_row)
+                    locked_assets_by_line[req_line.id] = locked_assets
+                else:
+                    if supplied_line.asset_ids:
+                        raise HTTPException(422, f"CONSUMABLE transfer must not provide asset_ids")
+                    available = await self.stock.current_balance(
+                        source_store.id, requisition.financial_year_id, req_line.item_id
+                    )
+                    if qty > available:
+                        raise HTTPException(
+                            409,
+                            f"Insufficient stock for item {req_line.item_id}: available {available}, requested dispatch {qty}",
+                        )
+            
             req_line.dispatched_quantity = qty
             total_dispatch += qty
             if qty > 0:
                 item = await self.session.get(Item, req_line.item_id)
-                if item is None:
-                    raise HTTPException(404, f"Item {req_line.item_id} not found")
                 unit = await self.session.get(Unit, item.unit_id)
-                dispatch_lines.append(
-                    StockTransferLine(
-                        requisition_line_id=req_line.id,
-                        item_id=req_line.item_id,
-                        unit_id=unit.id,
-                        quantity=qty,
-                        remarks=req_line.remarks,
-                    )
+                tline = StockTransferLine(
+                    requisition_line_id=req_line.id,
+                    item_id=req_line.item_id,
+                    unit_id=unit.id,
+                    quantity=qty,
+                    remarks=req_line.remarks,
                 )
+                dispatch_lines.append(tline)
+                tline._req_line_id = req_line.id
 
         if total_dispatch == 0:
             requisition.status = "CLOSED"
@@ -146,22 +187,44 @@ class TransferService:
 
         posting_group = uuid4()
         for line in transfer.lines:
-            self.session.add(
-                StockMovement(
-                    financial_year_id=requisition.financial_year_id,
-                    store_id=source_store.id,
-                    item_id=line.item_id,
-                    movement_date=transfer_date,
-                    movement_type="TRANSFER_OUT",
-                    quantity_in=Decimal("0"),
-                    quantity_out=line.quantity,
-                    reference_type="TRANSFER_LINE",
-                    reference_id=line.id,
-                    reference_no=transfer.transfer_no,
-                    posting_group_id=posting_group,
-                    created_by=actor_id,
+            cat_type = item_categories[line.item_id]
+            if cat_type == "ASSET":
+                assets_for_line = locked_assets_by_line[line._req_line_id]
+                for asset_row in assets_for_line:
+                    self.session.add(TransferLineAsset(transfer_line_id=line.id, asset_id=asset_row.id))
+                    asset_row.status = "ASSIGNED"
+                    asset_row.current_store_id = None
+                    asset_row.updated_by = actor_id
+                    self.session.add(
+                        AssetMovement(
+                            asset_id=asset_row.id,
+                            movement_type="TRANSFER",
+                            from_store_id=source_store.id,
+                            to_store_id=transfer.destination_store_id,
+                            reference_type="TRANSFER_LINE",
+                            reference_id=line.id,
+                            reference_document=transfer.transfer_no,
+                            movement_date=transfer_date,
+                            created_by=actor_id,
+                        )
+                    )
+            else:
+                self.session.add(
+                    StockMovement(
+                        financial_year_id=requisition.financial_year_id,
+                        store_id=source_store.id,
+                        item_id=line.item_id,
+                        movement_date=transfer_date,
+                        movement_type="TRANSFER_OUT",
+                        quantity_in=Decimal("0"),
+                        quantity_out=line.quantity,
+                        reference_type="TRANSFER_LINE",
+                        reference_id=line.id,
+                        reference_no=transfer.transfer_no,
+                        posting_group_id=posting_group,
+                        created_by=actor_id,
+                    )
                 )
-            )
         transfer.status = "DISPATCHED"
         transfer.dispatched_by = actor_id
         transfer.dispatched_at = datetime.now(timezone.utc)
@@ -215,23 +278,52 @@ class TransferService:
                 raise HTTPException(422, "Received quantity cannot be negative")
 
             posted_qty = min(physical_qty, line.quantity)
+            item = await self.session.get(Item, line.item_id)
+            cat = await self.session.get(Category, item.category_id)
+            
+            if cat.type == "ASSET" and physical_qty != line.quantity:
+                raise HTTPException(422, "Discrepancy is not supported for ASSET transfers. Received quantity must match dispatched quantity.")
+
             if posted_qty > 0:
-                self.session.add(
-                    StockMovement(
-                        financial_year_id=destination_fy.id,
-                        store_id=transfer.destination_store_id,
-                        item_id=line.item_id,
-                        movement_date=payload.receive_date,
-                        movement_type="TRANSFER_IN",
-                        quantity_in=posted_qty,
-                        quantity_out=Decimal("0"),
-                        reference_type="TRANSFER_LINE",
-                        reference_id=line.id,
-                        reference_no=transfer.transfer_no,
-                        posting_group_id=posting_group,
-                        created_by=actor_id,
+                if cat.type == "ASSET":
+                    tlas = await self.session.scalars(select(TransferLineAsset).where(TransferLineAsset.transfer_line_id == line.id))
+                    for tla in tlas:
+                        asset_row = await self.session.scalar(select(Asset).where(Asset.id == tla.asset_id).with_for_update())
+                        asset_row.status = "IN_STOCK"
+                        asset_row.current_store_id = transfer.destination_store_id
+                        asset_row.current_office_id = None
+                        asset_row.current_section_id = None
+                        asset_row.updated_by = actor_id
+                        self.session.add(
+                            AssetMovement(
+                                asset_id=asset_row.id,
+                                movement_type="TRANSFER",
+                                from_store_id=transfer.source_store_id,
+                                to_store_id=transfer.destination_store_id,
+                                reference_type="TRANSFER_LINE",
+                                reference_id=line.id,
+                                reference_document=transfer.transfer_no,
+                                movement_date=payload.receive_date,
+                                created_by=actor_id,
+                            )
+                        )
+                else:
+                    self.session.add(
+                        StockMovement(
+                            financial_year_id=destination_fy.id,
+                            store_id=transfer.destination_store_id,
+                            item_id=line.item_id,
+                            movement_date=payload.receive_date,
+                            movement_type="TRANSFER_IN",
+                            quantity_in=posted_qty,
+                            quantity_out=Decimal("0"),
+                            reference_type="TRANSFER_LINE",
+                            reference_id=line.id,
+                            reference_no=transfer.transfer_no,
+                            posting_group_id=posting_group,
+                            created_by=actor_id,
+                        )
                     )
-                )
 
             req_line = next(
                 (x for x in requisition.lines if x.id == line.requisition_line_id),

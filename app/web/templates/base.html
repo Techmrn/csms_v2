@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CSMS V2{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/csms.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">CS</div>
+      <div>
+        <div class="brand-title">CSMS V2</div>
+        <div class="brand-subtitle">Central Store Management</div>
+      </div>
+    </div>
+    <nav class="nav">
+      {% for item in menu %}
+      <a class="nav-item {% if request.url.path == item.href %}active{% endif %}" href="{{ item.href }}">{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="sidebar-bottom">
+      <a class="nav-item" href="/docs" target="_blank" rel="noreferrer">API Documentation</a>
+      <a class="nav-item" href="/logout">Sign out</a>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">STORE OPERATIONS</div>
+        <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+      </div>
+      <div class="user-chip">
+        <div class="avatar">{{ user.full_name[:1]|upper }}</div>
+        <div>
+          <div class="user-name">{{ user.full_name }}</div>
+          <div class="user-role">{{ role_label }}</div>
+        </div>
+      </div>
+    </header>
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

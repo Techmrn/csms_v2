@@ -3,7 +3,7 @@ from app.models.category import Category
 from app.models.financial_year import FinancialYear
 from app.models.inventory_policy import InventoryPolicy
 from app.models.indent import Indent, IndentLine
-from app.models.issue import Issue, IssueLine
+from app.models.issue import Issue, IssueLine, IssueLineAsset
 from app.models.item import Item
 from app.models.office import Office
 from app.models.permission import Permission, role_permissions
@@ -12,11 +12,11 @@ from app.models.section import Section
 from app.models.stock import OpeningStock, OpeningStockLine, StockAccount, StockMovement
 from app.models.receipt import Receipt, ReceiptLine
 from app.models.petty_purchase import PettyPurchase, PettyPurchaseLine
-from app.models.stock_return import StockReturn, StockReturnLine
+from app.models.stock_return import StockReturn, StockReturnLine, StockReturnLineAsset
 from app.models.store import Store
 from app.models.unit import Unit
 from app.models.user import User, user_roles, user_stores
-from app.models.asset import Asset, AssetDetail, AssetMovement, ReceiptLineAsset
+from app.models.asset import Asset, AssetDetail, AssetMovement, ReceiptLineAsset, AssetRepair
 
 __all__ = [
     "Category",
@@ -25,6 +25,7 @@ __all__ = [
     "Indent",
     "IndentLine",
     "Issue",
+    "IssueLineAsset",
     "IssueLine",
     "Item",
     "Office",
@@ -40,6 +41,7 @@ __all__ = [
     "PettyPurchaseLine",
     "StockReturn",
     "StockReturnLine",
+    "StockReturnLineAsset",
     "OpeningStock",
     "OpeningStockLine",
     "Store",
@@ -60,10 +62,12 @@ __all__ = [
     "AssetDetail",
     "AssetMovement",
     "ReceiptLineAsset",
+    "AssetRepair",
+    "TransferLineAsset",
 ]
 
 from app.models.requisition import CentralStoreRequisition, CentralStoreRequisitionLine
-from app.models.transfer import StockTransfer, StockTransferLine, TransferDiscrepancy
+from app.models.transfer import StockTransfer, StockTransferLine, TransferDiscrepancy, TransferLineAsset
 from app.models.stock_control import (
     Adjustment,
     AdjustmentLine,

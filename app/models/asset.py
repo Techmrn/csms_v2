@@ -57,6 +57,9 @@ class Asset(TimestampMixin, Base):
     movements: Mapped[list["AssetMovement"]] = relationship(
         back_populates="asset", cascade="all, delete-orphan", lazy="selectin"
     )
+    repairs: Mapped[list["AssetRepair"]] = relationship(
+        back_populates="asset", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class AssetDetail(TimestampMixin, Base):
@@ -126,3 +129,29 @@ class ReceiptLineAsset(TimestampMixin, Base):
 
     receipt_line: Mapped["ReceiptLine"] = relationship()
     asset: Mapped[Asset] = relationship()
+
+class AssetRepair(TimestampMixin, Base):
+    __tablename__ = "asset_repairs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    asset_id: Mapped[int] = mapped_column(
+        ForeignKey("assets.id", ondelete="RESTRICT"), nullable=False
+    )
+    
+    # Snapshot of the asset's state prior to repair
+    previous_store_id: Mapped[int | None] = mapped_column(ForeignKey("stores.id", ondelete="RESTRICT"), nullable=True)
+    previous_office_id: Mapped[int | None] = mapped_column(ForeignKey("offices.id", ondelete="RESTRICT"), nullable=True)
+    previous_section_id: Mapped[int | None] = mapped_column(ForeignKey("sections.id", ondelete="RESTRICT"), nullable=True)
+    previous_status: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    sent_date: Mapped[date] = mapped_column(Date, nullable=False)
+    sent_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="UNDER_REPAIR")
+    
+    return_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    returned_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    asset: Mapped[Asset] = relationship(back_populates="repairs")

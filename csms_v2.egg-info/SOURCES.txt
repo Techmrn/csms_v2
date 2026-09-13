@@ -5,6 +5,7 @@ app/main.py
 app/api/__init__.py
 app/api/router.py
 app/api/routes/__init__.py
+app/api/routes/assets.py
 app/api/routes/auth.py
 app/api/routes/health.py
 app/api/routes/indents.py
@@ -24,6 +25,7 @@ app/db/__init__.py
 app/db/base.py
 app/db/session.py
 app/models/__init__.py
+app/models/asset.py
 app/models/batch.py
 app/models/category.py
 app/models/common.py
@@ -47,6 +49,7 @@ app/models/transfer.py
 app/models/unit.py
 app/models/user.py
 app/repositories/__init__.py
+app/repositories/asset.py
 app/repositories/generic.py
 app/repositories/indent.py
 app/repositories/office.py
@@ -59,6 +62,7 @@ app/repositories/stock_return.py
 app/repositories/store.py
 app/repositories/transfer.py
 app/schemas/__init__.py
+app/schemas/asset.py
 app/schemas/category.py
 app/schemas/financial_year.py
 app/schemas/indent.py
@@ -76,6 +80,7 @@ app/schemas/unit.py
 app/security/__init__.py
 app/security/auth.py
 app/services/__init__.py
+app/services/asset.py
 app/services/authorization.py
 app/services/indent.py
 app/services/issue.py
@@ -88,12 +93,20 @@ app/services/stock_control.py
 app/services/stock_return.py
 app/services/store.py
 app/services/transfer.py
+app/web/__init__.py
+app/web/auth.py
+app/web/routes.py
 csms_v2.egg-info/PKG-INFO
 csms_v2.egg-info/SOURCES.txt
 csms_v2.egg-info/dependency_links.txt
 csms_v2.egg-info/requires.txt
 csms_v2.egg-info/top_level.txt
+tests/test_all_endpoints_auth.py
+tests/test_asset_phase1.py
+tests/test_asset_phase2.py
+tests/test_auth_integration.py
 tests/test_imports.py
 tests/test_petty_purchase_imports.py
 tests/test_receipt_return_imports.py
 tests/test_stock_imports.py
+tests/test_web_ui.py

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block content %}
+<div class="context-bar">
+  <div class="context-title">Working context</div>
+  <form method="get" action="/app" class="context-form">
+    <select name="store_id">
+      {% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}
+    </select>
+    <select name="financial_year_id">
+      {% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>{{ fy.year_name }}{% if fy.is_current %} — Current{% endif %}</option>{% endfor %}
+    </select>
+    <button class="button" type="submit">Apply</button>
+  </form>
+</div>
+
+<div class="hero-grid">
+  <section class="hero card">
+    <div class="eyebrow">CURRENT ROLE</div>
+    <h2>{{ role_label }}</h2>
+    <p>Operate only within the stores, offices, approvals and transaction permissions assigned to your role.</p>
+    <div class="hero-context">{{ selected_store.name if selected_store else 'No store selected' }} · {{ selected_fy.year_name if selected_fy else 'No FY selected' }}</div>
+  </section>
+  <section class="stat-card card"><span>Items</span><strong>{{ item_count }}</strong><small>Active master items</small></section>
+  <section class="stat-card card"><span>Stock Accounts</span><strong>{{ stock_count }}</strong><small>Items with ledger activity</small></section>
+  <section class="stat-card card"><span>Assets</span><strong>{{ asset_count }}</strong><small>Assets held in selected store</small></section>
+</div>
+
+<div class="section-head"><div><div class="eyebrow">STOCK OVERVIEW</div><h2>Current balance</h2></div><a class="button" href="/app/stock?store_id={{ selected_store.id if selected_store else '' }}&financial_year_id={{ selected_fy.id if selected_fy else '' }}">Open stock</a></div>
+<div class="card table-card">
+  {% if stock_rows %}
+  <table><thead><tr><th>Item</th><th>Code</th><th>Unit</th><th class="num">Balance</th></tr></thead><tbody>
+  {% for row in stock_rows %}<tr><td>{{ row.name }}</td><td>{{ row.code }}</td><td>{{ row[5] }}</td><td class="num">{{ row.balance }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<div class="empty">Select a visible store and financial year to view stock.</div>{% endif %}
+</div>
+
+<div class="section-head"><div><div class="eyebrow">WORK AREAS</div><h2>Available for your role</h2></div></div>
+<div class="module-grid">
+  {% for item in menu if item.label != 'Dashboard' %}<a class="module card" href="{{ item.href }}"><span>{{ item.label }}</span><span class="arrow">→</span></a>{% endfor %}
+</div>
+{% endblock %}

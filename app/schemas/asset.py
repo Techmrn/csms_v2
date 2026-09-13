@@ -1,16 +1,24 @@
-from datetime import date, datetime
+import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
+
+class AssetLifecycleRequest(BaseModel):
+    reason: str | None = None
+    date: datetime.date | None = None
+
+class AssetRepairReturnRequest(BaseModel):
+    resolution: str | None = None
+    date: datetime.date | None = None
 
 
 class AssetDetailResponse(BaseModel):
     make: str | None = None
     model: str | None = None
-    purchase_date: date | None = None
+    purchase_date: datetime.date | None = None
     purchase_reference: str | None = None
     purchase_value: Decimal | None = None
-    warranty_expiry_date: date | None = None
+    warranty_expiry_date: datetime.date | None = None
     technical_specifications: str | None = None
     remarks: str | None = None
     model_config = ConfigDict(from_attributes=True)
@@ -28,10 +36,10 @@ class AssetMovementResponse(BaseModel):
     reference_type: str | None = None
     reference_id: int | None = None
     reference_document: str | None = None
-    movement_date: date
+    movement_date: datetime.date
     remarks: str | None = None
     created_by: int
-    created_at: datetime
+    created_at: datetime.datetime
     model_config = ConfigDict(from_attributes=True)
 
 

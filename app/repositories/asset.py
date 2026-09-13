@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import or_, select, false
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -11,9 +11,7 @@ class AssetRepository:
 
     async def get(self, asset_id: int) -> Asset | None:
         result = await self.session.execute(
-            select(Asset)
-            .options(selectinload(Asset.detail), selectinload(Asset.movements))
-            .where(Asset.id == asset_id)
+            select(Asset).options(selectinload(Asset.detail), selectinload(Asset.movements)).where(Asset.id == asset_id)
         )
         return result.scalar_one_or_none()
 
@@ -21,20 +19,22 @@ class AssetRepository:
         return await self.session.scalar(select(Asset).where(Asset.asset_no == asset_no))
 
     async def list(
-        self,
-        store_id: int | None = None,
-        office_id: int | None = None,
-        status: str | None = None,
-        item_id: int | None = None,
-        allowed_store_ids: list[int] | None = None,
+        self, store_id: int | None = None, office_id: int | None = None, status: str | None = None,
+        item_id: int | None = None, allowed_store_ids: list[int] | None = None,
+        allowed_office_ids: list[int] | None = None, department_wide: bool = False,
     ) -> list[Asset]:
         stmt = select(Asset).options(selectinload(Asset.detail))
         if store_id is not None:
             stmt = stmt.where(Asset.current_store_id == store_id)
-        elif allowed_store_ids is not None:
-            stmt = stmt.where(Asset.current_store_id.in_(allowed_store_ids))
-        if office_id is not None:
+        elif office_id is not None:
             stmt = stmt.where(Asset.current_office_id == office_id)
+        elif not department_wide:
+            conditions = []
+            if allowed_store_ids:
+                conditions.append(Asset.current_store_id.in_(allowed_store_ids))
+            if allowed_office_ids:
+                conditions.append(Asset.current_office_id.in_(allowed_office_ids))
+            stmt = stmt.where(or_(*conditions) if conditions else false())
         if status is not None:
             stmt = stmt.where(Asset.status == status)
         if item_id is not None:

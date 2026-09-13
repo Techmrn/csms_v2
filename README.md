@@ -71,3 +71,12 @@ FastAPI router
 ```
 
 Stock mutation must eventually pass through the posting layer. Routers must never write StockMovement directly.
+
+
+## Local Agent Rule
+
+Antigravity is used for verification/testing of this baseline. Do not redesign business rules or alter the schema unless explicitly instructed. Report production defects before making changes.
+
+
+## UI route registration
+The server registers `app.web.routes.router` at the application root and mounts `/static` for the UI stylesheet. No database migration is required for the UI foundation.

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class TransferDispatchLine(BaseModel):
     requisition_line_id: int
     dispatch_quantity: Decimal = Field(ge=0)
+    asset_ids: list[int] | None = None
 
 
 class TransferDispatchRequest(BaseModel):

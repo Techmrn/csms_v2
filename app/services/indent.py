@@ -20,7 +20,11 @@ class IndentService:
         self.session = session
         self.repository = IndentRepository(session)
 
-    async def create(self, payload: IndentCreate) -> Indent:
+    async def create(self, payload: IndentCreate, actor_id: int) -> Indent:
+        from app.services.authorization import AuthorizationService
+        auth = AuthorizationService(self.session)
+        await auth.require_permission(actor_id, "INDENT_PROCESS" if payload.request_source == "PHYSICAL" else "INDENT_CREATE")
+
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
         store = await self.session.get(Store, payload.store_id)
         office = await self.session.get(Office, payload.office_id)
@@ -55,8 +59,8 @@ class IndentService:
             category = await self.session.get(Category, item.category_id)
             if category is None:
                 raise HTTPException(409, f"Item {item.code} has no valid category")
-            if category.type != "CONSUMABLE":
-                raise HTTPException(422, f"Manual stock issue currently supports consumables only: {item.code}")
+            if category.type not in ("CONSUMABLE", "ASSET"):
+                raise HTTPException(422, f"Manual stock issue supports only consumable and asset items: {item.code}")
             lines.append(
                 IndentLine(
                     item_id=line.item_id,
@@ -79,6 +83,7 @@ class IndentService:
             reference_date=payload.reference_date,
             status="RECORDED",
             remarks=payload.remarks,
+            created_by=actor_id,
             lines=lines,
         )
         self.session.add(indent)

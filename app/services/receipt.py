@@ -24,14 +24,13 @@ class ReceiptService:
         self.session = session
         self.repository = ReceiptRepository(session)
 
-    async def create(self, payload: ReceiptCreate, actor_id: int | None = None) -> Receipt:
+    async def create(self, payload: ReceiptCreate, actor_id: int) -> Receipt:
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
         store = await self.session.get(Store, payload.store_id)
-        if actor_id is not None:
-            from app.services.authorization import AuthorizationService
-            auth = AuthorizationService(self.session)
-            await auth.require_permission(actor_id, "STOCK_RECEIPT")
-            await auth.require_store_assignment(actor_id, payload.store_id)
+        from app.services.authorization import AuthorizationService
+        auth = AuthorizationService(self.session)
+        await auth.require_permission(actor_id, "STOCK_RECEIPT")
+        await auth.require_store_assignment(actor_id, payload.store_id)
         if fy is None:
             raise HTTPException(404, "Financial year not found")
         if store is None:
@@ -120,15 +119,14 @@ class ReceiptService:
             raise HTTPException(500, "Receipt could not be reloaded")
         return result
 
-    async def verify(self, receipt_id: int, actor_id: int | None = None) -> Receipt:
+    async def verify(self, receipt_id: int, actor_id: int) -> Receipt:
         receipt = await self.repository.get(receipt_id, for_update=True)
         if receipt is None:
             raise HTTPException(404, "Receipt not found")
-        if actor_id is not None:
-            from app.services.authorization import AuthorizationService
-            auth = AuthorizationService(self.session)
-            await auth.require_permission(actor_id, "STOCK_RECEIPT")
-            await auth.require_store_assignment(actor_id, receipt.store_id)
+        from app.services.authorization import AuthorizationService
+        auth = AuthorizationService(self.session)
+        await auth.require_permission(actor_id, "STOCK_RECEIPT")
+        await auth.require_store_assignment(actor_id, receipt.store_id)
         if receipt.status != "OPEN":
             raise HTTPException(409, f"Receipt is {receipt.status} and cannot be verified")
 
@@ -147,6 +145,7 @@ class ReceiptService:
                 )
 
         receipt.status = "VERIFIED"
+        receipt.verified_by = actor_id
         receipt.verified_at = datetime.now(timezone.utc)
         await self.session.commit()
         result = await self.repository.get(receipt.id)
@@ -154,15 +153,14 @@ class ReceiptService:
             raise HTTPException(500, "Receipt could not be reloaded")
         return result
 
-    async def post(self, receipt_id: int, actor_id: int | None = None) -> Receipt:
+    async def post(self, receipt_id: int, actor_id: int) -> Receipt:
         receipt = await self.repository.get(receipt_id, for_update=True)
         if receipt is None:
             raise HTTPException(404, "Receipt not found")
-        if actor_id is not None:
-            from app.services.authorization import AuthorizationService
-            auth = AuthorizationService(self.session)
-            await auth.require_permission(actor_id, "STOCK_RECEIPT")
-            await auth.require_store_assignment(actor_id, receipt.store_id)
+        from app.services.authorization import AuthorizationService
+        auth = AuthorizationService(self.session)
+        await auth.require_permission(actor_id, "STOCK_RECEIPT")
+        await auth.require_store_assignment(actor_id, receipt.store_id)
         if receipt.status != "VERIFIED":
             raise HTTPException(409, f"Receipt is {receipt.status}; only VERIFIED receipts can be posted")
 
@@ -256,10 +254,12 @@ class ReceiptService:
                             reference_no=receipt.receipt_no,
                             posting_group_id=posting_group_id,
                             remarks=line.remarks,
+                            created_by=actor_id,
                         )
                     )
 
             receipt.status = "POSTED"
+            receipt.posted_by = actor_id
             receipt.posted_at = now
             receipt.posting_group_id = posting_group_id
             await self.session.flush()

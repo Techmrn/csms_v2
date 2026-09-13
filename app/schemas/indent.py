@@ -52,6 +52,7 @@ class IndentResponse(BaseModel):
 class IssueFinalizeLine(BaseModel):
     indent_line_id: int
     issued_quantity: Decimal = Field(ge=0)
+    asset_ids: list[int] | None = None
     remarks: str | None = None
 
 

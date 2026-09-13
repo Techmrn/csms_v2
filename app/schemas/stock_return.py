@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class StockReturnLineCreate(BaseModel):
     original_issue_line_id: int
     quantity: Decimal = Field(gt=0)
+    asset_ids: list[int] | None = None
     remarks: str | None = None
 
 

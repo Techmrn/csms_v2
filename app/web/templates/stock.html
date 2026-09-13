@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Stock{% endblock %}
+{% block page_title %}Stock{% endblock %}
+{% block content %}
+<div class="context-bar">
+  <div class="context-title">Stock context</div>
+  <form method="get" action="/app/stock" class="context-form">
+    <select name="store_id">{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select>
+    <select name="financial_year_id">{% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}</select>
+    <button class="button" type="submit">Apply</button>
+  </form>
+</div>
+<div class="card table-card">
+<table><thead><tr><th>Item</th><th>Code</th><th>Unit</th><th class="num">Balance</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.name }}</td><td>{{ row.code }}</td><td>{{ row[5] }}</td><td class="num">{{ row.balance }}</td></tr>{% else %}<tr><td colspan="4"><div class="empty">No stock activity for this context.</div></td></tr>{% endfor %}
+</tbody></table>
+</div>
+{% endblock %}

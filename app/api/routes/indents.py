@@ -13,7 +13,7 @@ router = APIRouter(prefix="/indents", tags=["indents"])
 
 @router.post("", response_model=IndentResponse, status_code=status.HTTP_201_CREATED)
 async def create_indent(payload: IndentCreate, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
-    return await IndentService(session).create(payload)
+    return await IndentService(session).create(payload, current_user.id)
 
 
 @router.get("", response_model=list[IndentResponse])
@@ -37,4 +37,4 @@ async def finalize_issue(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await IssueService(session).finalize_from_indent(indent_id, payload)
+    return await IssueService(session).finalize_from_indent(indent_id, payload, current_user.id)

@@ -312,6 +312,7 @@ class PettyPurchaseService:
                         reference_no=purchase.petty_purchase_no,
                         posting_group_id=posting_group_id,
                         remarks=line.remarks,
+                        created_by=actor_id,
                     )
                 )
 
@@ -378,6 +379,7 @@ class PettyPurchaseService:
                             reference_no=issue.issue_no,
                             posting_group_id=posting_group_id,
                             remarks=issue_line.remarks,
+                            created_by=actor_id,
                         )
                     )
                 indent.status = "FINALIZED"

@@ -18,6 +18,9 @@ from app.models.unit import Unit
 from app.models.item import Item
 from app.repositories.stock_return import StockReturnRepository
 from app.schemas.stock_return import StockReturnCreate
+from app.models.stock_return import StockReturnLineAsset
+from app.models.issue import IssueLineAsset
+from app.models.asset import Asset, AssetMovement
 
 
 class StockReturnService:
@@ -25,14 +28,13 @@ class StockReturnService:
         self.session = session
         self.repository = StockReturnRepository(session)
 
-    async def create(self, payload: StockReturnCreate, actor_id: int | None = None) -> StockReturn:
+    async def create(self, payload: StockReturnCreate, actor_id: int) -> StockReturn:
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
         store = await self.session.get(Store, payload.store_id)
-        if actor_id is not None:
-            from app.services.authorization import AuthorizationService
-            auth = AuthorizationService(self.session)
-            await auth.require_permission(actor_id, "STOCK_RETURN")
-            await auth.require_store_assignment(actor_id, payload.store_id)
+        from app.services.authorization import AuthorizationService
+        auth = AuthorizationService(self.session)
+        await auth.require_permission(actor_id, "STOCK_RETURN")
+        await auth.require_store_assignment(actor_id, payload.store_id)
         if fy is None:
             raise HTTPException(404, "Financial year not found")
         if store is None:
@@ -75,6 +77,7 @@ class StockReturnService:
             raise HTTPException(422, "Duplicate original issue line in return")
 
         return_lines: list[StockReturnLine] = []
+        global_asset_ids = set()
         for request_line in payload.lines:
             issue_line = issue_lines.get(request_line.original_issue_line_id)
             if issue_line is None:
@@ -87,17 +90,50 @@ class StockReturnService:
             if item is None or unit is None:
                 raise HTTPException(409, "Original issue line has invalid item or unit")
             category = await self.session.get(Category, item.category_id)
-            if category is None or category.type != "CONSUMABLE":
-                raise HTTPException(422, f"Only consumable returns are supported: {item.code}")
-            return_lines.append(
-                StockReturnLine(
-                    original_issue_line_id=issue_line.id,
-                    item_id=issue_line.item_id,
-                    quantity=Decimal(request_line.quantity),
-                    unit_id=issue_line.unit_id,
-                    remarks=request_line.remarks,
-                )
+            if category is None or category.type not in ("CONSUMABLE", "ASSET"):
+                raise HTTPException(422, f"Unsupported item type {category.type if category else 'None'} for return: {item.code}")
+            
+            return_line = StockReturnLine(
+                original_issue_line_id=issue_line.id,
+                item_id=issue_line.item_id,
+                quantity=Decimal(request_line.quantity),
+                unit_id=issue_line.unit_id,
+                remarks=request_line.remarks,
             )
+            
+            if category.type == "ASSET":
+                asset_ids = request_line.asset_ids or []
+                if not asset_ids:
+                    raise HTTPException(422, f"ASSET return requires asset_ids")
+                if len(asset_ids) != int(request_line.quantity):
+                    raise HTTPException(422, f"ASSET return quantity mismatch")
+                if len(asset_ids) != len(set(asset_ids)):
+                    raise HTTPException(422, f"ASSET return contains duplicate asset IDs in the same line")
+                for aid in asset_ids:
+                    if aid in global_asset_ids:
+                        raise HTTPException(422, f"Asset ID {aid} cannot be returned multiple times in the same transaction")
+                    global_asset_ids.add(aid)
+                
+                ilas = await self.session.scalars(
+                    select(IssueLineAsset).where(IssueLineAsset.issue_line_id == issue_line.id)
+                )
+                valid_asset_ids = {ila.asset_id for ila in ilas}
+                
+                for aid in asset_ids:
+                    if aid not in valid_asset_ids:
+                        raise HTTPException(422, f"Asset ID {aid} was not issued in the specified issue line")
+                    asset_row = await self.session.get(Asset, aid)
+                    if asset_row.status != "ASSIGNED":
+                        raise HTTPException(422, f"Asset ID {aid} is not currently ASSIGNED")
+                    if asset_row.current_office_id != returning_office_id or asset_row.current_section_id != returning_section_id:
+                        raise HTTPException(422, f"Asset ID {aid} is not assigned to the returning office/section")
+                
+                return_line.asset_links = [StockReturnLineAsset(asset_id=aid) for aid in asset_ids]
+            else:
+                if request_line.asset_ids:
+                    raise HTTPException(422, f"CONSUMABLE return must not provide asset_ids")
+                    
+            return_lines.append(return_line)
 
         stock_return = StockReturn(
             return_no=await self._next_number(),
@@ -108,6 +144,7 @@ class StockReturnService:
             returning_office_id=returning_office_id,
             returning_section_id=returning_section_id,
             status="OPEN",
+            created_by=actor_id,
             reason=payload.reason,
             remarks=payload.remarks,
             lines=return_lines,
@@ -119,18 +156,18 @@ class StockReturnService:
             raise HTTPException(500, "Return could not be reloaded")
         return result
 
-    async def verify(self, return_id: int, actor_id: int | None = None) -> StockReturn:
+    async def verify(self, return_id: int, actor_id: int) -> StockReturn:
         stock_return = await self.repository.get(return_id, for_update=True)
         if stock_return is None:
             raise HTTPException(404, "Return not found")
-        if actor_id is not None:
-            from app.services.authorization import AuthorizationService
-            auth = AuthorizationService(self.session)
-            await auth.require_permission(actor_id, "STOCK_RETURN")
-            await auth.require_store_assignment(actor_id, stock_return.store_id)
+        from app.services.authorization import AuthorizationService
+        auth = AuthorizationService(self.session)
+        await auth.require_permission(actor_id, "STOCK_RETURN")
+        await auth.require_store_assignment(actor_id, stock_return.store_id)
         if stock_return.status != "OPEN":
             raise HTTPException(409, f"Return is {stock_return.status} and cannot be verified")
         stock_return.status = "VERIFIED"
+        stock_return.verified_by = actor_id
         stock_return.verified_at = datetime.now(timezone.utc)
         await self.session.commit()
         result = await self.repository.get(stock_return.id)
@@ -138,15 +175,14 @@ class StockReturnService:
             raise HTTPException(500, "Return could not be reloaded")
         return result
 
-    async def post(self, return_id: int, actor_id: int | None = None) -> StockReturn:
+    async def post(self, return_id: int, actor_id: int) -> StockReturn:
         stock_return = await self.repository.get(return_id, for_update=True)
         if stock_return is None:
             raise HTTPException(404, "Return not found")
-        if actor_id is not None:
-            from app.services.authorization import AuthorizationService
-            auth = AuthorizationService(self.session)
-            await auth.require_permission(actor_id, "STOCK_RETURN")
-            await auth.require_store_assignment(actor_id, stock_return.store_id)
+        from app.services.authorization import AuthorizationService
+        auth = AuthorizationService(self.session)
+        await auth.require_permission(actor_id, "STOCK_RETURN")
+        await auth.require_store_assignment(actor_id, stock_return.store_id)
         if stock_return.status != "VERIFIED":
             raise HTTPException(409, f"Return is {stock_return.status}; only VERIFIED returns can be posted")
 
@@ -227,25 +263,59 @@ class StockReturnService:
                         f"Return quantity {line.quantity} exceeds remaining returnable quantity "
                         f"{issued_quantity - already_returned} for issue line {original.id}",
                     )
-
-                self.session.add(
-                    StockMovement(
-                        financial_year_id=stock_return.financial_year_id,
-                        store_id=stock_return.store_id,
-                        item_id=line.item_id,
-                        movement_date=stock_return.return_date,
-                        movement_type="RETURN",
-                        quantity_in=line.quantity,
-                        quantity_out=Decimal("0"),
-                        reference_type="RETURN_LINE",
-                        reference_id=line.id,
-                        reference_no=stock_return.return_no,
-                        posting_group_id=posting_group_id,
-                        remarks=line.remarks,
+                    
+                item = await self.session.get(Item, line.item_id)
+                category = await self.session.get(Category, item.category_id)
+                if category.type == "ASSET":
+                    rlas = await self.session.scalars(select(StockReturnLineAsset).where(StockReturnLineAsset.stock_return_line_id == line.id))
+                    for rla in rlas:
+                        asset_row = await self.session.scalar(select(Asset).where(Asset.id == rla.asset_id).with_for_update())
+                        if asset_row.status != "ASSIGNED":
+                            raise HTTPException(409, f"Asset ID {asset_row.id} is no longer ASSIGNED")
+                        
+                        asset_row.status = "IN_STOCK"
+                        asset_row.current_store_id = stock_return.store_id
+                        asset_row.current_office_id = None
+                        asset_row.current_section_id = None
+                        if actor_id:
+                            asset_row.updated_by = actor_id
+                            
+                        self.session.add(
+                            AssetMovement(
+                                asset_id=asset_row.id,
+                                movement_type="RETURN",
+                                from_store_id=None,
+                                from_office_id=stock_return.returning_office_id,
+                                from_section_id=stock_return.returning_section_id,
+                                to_store_id=stock_return.store_id,
+                                reference_type="RETURN_LINE",
+                                reference_id=line.id,
+                                reference_document=stock_return.return_no,
+                                movement_date=stock_return.return_date,
+                                created_by=actor_id,
+                            )
+                        )
+                else:
+                    self.session.add(
+                        StockMovement(
+                            financial_year_id=stock_return.financial_year_id,
+                            store_id=stock_return.store_id,
+                            item_id=line.item_id,
+                            movement_date=stock_return.return_date,
+                            movement_type="RETURN",
+                            quantity_in=line.quantity,
+                            quantity_out=Decimal("0"),
+                            reference_type="RETURN_LINE",
+                            reference_id=line.id,
+                            reference_no=stock_return.return_no,
+                            posting_group_id=posting_group_id,
+                            remarks=line.remarks,
+                            created_by=actor_id,
+                        )
                     )
-                )
 
             stock_return.status = "POSTED"
+            stock_return.posted_by = actor_id
             stock_return.posted_at = now
             stock_return.posting_group_id = posting_group_id
             await self.session.flush()

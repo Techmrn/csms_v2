@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.store import Store
     from app.models.user import User
     from app.models.requisition import CentralStoreRequisition
+    from app.models.asset import Asset
 
 
 class StockTransfer(TimestampMixin, Base):
@@ -82,6 +83,28 @@ class StockTransferLine(Base):
 
     transfer: Mapped[StockTransfer] = relationship(back_populates="lines")
     item: Mapped["Item"] = relationship()
+
+    asset_links: Mapped[list["TransferLineAsset"]] = relationship(
+        back_populates="transfer_line", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+class TransferLineAsset(TimestampMixin, Base):
+    __tablename__ = "transfer_line_assets"
+    __table_args__ = (
+        Index("ix_transfer_line_assets_asset_id", "asset_id"),
+        UniqueConstraint("transfer_line_id", "asset_id", name="uq_transfer_line_assets_transfer_line_asset"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    transfer_line_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_transfer_lines.id", ondelete="CASCADE"), nullable=False
+    )
+    asset_id: Mapped[int] = mapped_column(
+        ForeignKey("assets.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    transfer_line: Mapped[StockTransferLine] = relationship(back_populates="asset_links")
+    asset: Mapped["Asset"] = relationship()
 
 
 class TransferDiscrepancy(TimestampMixin, Base):

@@ -59,8 +59,8 @@ class RequisitionService:
             category = await self.session.get(Category, item.category_id)
             if category is None:
                 raise HTTPException(409, f"Item {line.item_id} has no valid category")
-            if category.type != "CONSUMABLE":
-                raise HTTPException(422, f"Central Store requisition supports consumables only: {item.code}")
+            if category.type not in ("CONSUMABLE", "ASSET"):
+                raise HTTPException(422, f"Central Store requisition supports consumable and asset items only: {item.code}")
             lines.append(CentralStoreRequisitionLine(
                 item_id=item.id,
                 requested_quantity=line.requested_quantity,

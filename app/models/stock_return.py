@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from app.models.section import Section
     from app.models.store import Store
     from app.models.unit import Unit
+    from app.models.asset import Asset
 
 
 class StockReturn(TimestampMixin, Base):
@@ -90,3 +91,25 @@ class StockReturnLine(Base):
     original_issue_line: Mapped["IssueLine"] = relationship()
     item: Mapped["Item"] = relationship()
     unit: Mapped["Unit"] = relationship()
+
+    asset_links: Mapped[list["StockReturnLineAsset"]] = relationship(
+        back_populates="return_line", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+class StockReturnLineAsset(TimestampMixin, Base):
+    __tablename__ = "stock_return_line_assets"
+    __table_args__ = (
+        Index("ix_stock_return_line_assets_asset_id", "asset_id"),
+        UniqueConstraint("stock_return_line_id", "asset_id", name="uq_stock_return_line_assets_return_line_asset"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    stock_return_line_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_return_lines.id", ondelete="CASCADE"), nullable=False
+    )
+    asset_id: Mapped[int] = mapped_column(
+        ForeignKey("assets.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    return_line: Mapped[StockReturnLine] = relationship(back_populates="asset_links")
+    asset: Mapped["Asset"] = relationship()

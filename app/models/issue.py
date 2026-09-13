@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Index, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.item import Item
     from app.models.store import Store
     from app.models.unit import Unit
+    from app.models.asset import Asset
 
 
 class Issue(TimestampMixin, Base):
@@ -70,3 +71,25 @@ class IssueLine(Base):
     issue: Mapped[Issue] = relationship(back_populates="lines")
     item: Mapped["Item"] = relationship()
     unit: Mapped["Unit"] = relationship()
+    
+    asset_links: Mapped[list["IssueLineAsset"]] = relationship(
+        back_populates="issue_line", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+class IssueLineAsset(TimestampMixin, Base):
+    __tablename__ = "issue_line_assets"
+    __table_args__ = (
+        Index("ix_issue_line_assets_asset_id", "asset_id"),
+        UniqueConstraint("issue_line_id", "asset_id", name="uq_issue_line_assets_issue_line_asset"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    issue_line_id: Mapped[int] = mapped_column(
+        ForeignKey("issue_lines.id", ondelete="CASCADE"), nullable=False
+    )
+    asset_id: Mapped[int] = mapped_column(
+        ForeignKey("assets.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    issue_line: Mapped[IssueLine] = relationship(back_populates="asset_links")
+    asset: Mapped["Asset"] = relationship()
