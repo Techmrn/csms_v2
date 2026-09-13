@@ -5,6 +5,18 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class AssetReceiptInput(BaseModel):
+    serial_no: str | None = None
+    make: str | None = None
+    model: str | None = None
+    purchase_date: date | None = None
+    purchase_reference: str | None = None
+    purchase_value: Decimal | None = None
+    warranty_expiry_date: date | None = None
+    technical_specifications: str | None = None
+    remarks: str | None = None
+
+
 class ReceiptLineCreate(BaseModel):
     item_id: int
     received_quantity: Decimal = Field(gt=0)
@@ -13,6 +25,7 @@ class ReceiptLineCreate(BaseModel):
     unit_id: int
     unit_price: Decimal | None = Field(default=None, ge=0)
     remarks: str | None = None
+    asset_details: list[AssetReceiptInput] | None = None
 
 
 class ReceiptCreate(BaseModel):
@@ -37,6 +50,7 @@ class ReceiptLineResponse(BaseModel):
     unit_id: int
     unit_price: Decimal | None
     remarks: str | None
+    asset_details: list[AssetReceiptInput] | None = None
     model_config = ConfigDict(from_attributes=True)
 
 

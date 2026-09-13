@@ -1,0 +1,3 @@
+# Add these imports/exports to the existing app/models/__init__.py:
+# from app.models.asset import Asset, AssetDetail, AssetMovement, ReceiptLineAsset
+# and add the four names to __all__.

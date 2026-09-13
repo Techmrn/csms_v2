@@ -54,8 +54,8 @@ class ReceiptService:
             category = await self.session.get(Category, item.category_id)
             if category is None:
                 raise HTTPException(409, f"Item {item.code} has no valid category")
-            if category.type != "CONSUMABLE":
-                raise HTTPException(422, f"Receipt stock currently supports consumables only: {item.code}")
+            if category.type not in ("CONSUMABLE", "ASSET"):
+                raise HTTPException(422, f"Receipt stock currently supports consumables and assets only: {item.code}")
 
             unit = await self.session.get(Unit, line.unit_id)
             if unit is None:
@@ -74,6 +74,18 @@ class ReceiptService:
                     f"Accepted plus rejected quantity exceeds received quantity for item {item.code}",
                 )
 
+            if category.type == "ASSET":
+                asset_details = [d.model_dump(mode="json") for d in (line.asset_details or [])]
+                if accepted > 0 and len(asset_details) != int(accepted):
+                    raise HTTPException(422, "Asset accepted quantity must equal the count of asset details")
+                if accepted % 1 != 0:
+                    raise HTTPException(422, "Asset accepted quantity must be an integer")
+                serials = [d.get("serial_no") for d in asset_details if d.get("serial_no")]
+                if len(serials) != len(set(serials)):
+                    raise HTTPException(422, "Duplicate serial numbers in asset details")
+            else:
+                asset_details = None
+
             lines.append(
                 ReceiptLine(
                     item_id=item.id,
@@ -83,6 +95,7 @@ class ReceiptService:
                     unit_id=unit.id,
                     unit_price=line.unit_price,
                     remarks=line.remarks,
+                    asset_details=asset_details,
                 )
             )
 
@@ -164,8 +177,17 @@ class ReceiptService:
         now = datetime.now(timezone.utc)
 
         async with self.session.begin_nested():
+            item_categories = {}
+            for line in receipt.lines:
+                if line.item_id not in item_categories:
+                    item = await self.session.get(Item, line.item_id)
+                    cat = await self.session.get(Category, item.category_id)
+                    item_categories[line.item_id] = cat.type
+
             item_ids = sorted({line.item_id for line in receipt.lines})
             for item_id in item_ids:
+                if item_categories[item_id] == "ASSET":
+                    continue
                 await self.session.execute(
                     pg_insert(StockAccount)
                     .values(
@@ -199,26 +221,43 @@ class ReceiptService:
             if existing_refs.first() is not None:
                 raise HTTPException(409, "Receipt has already been posted")
 
+            from app.services.asset import AssetService
+            from app.schemas.receipt import AssetReceiptInput
+            asset_service = AssetService(self.session)
+
             for line in receipt.lines:
                 accepted = Decimal(line.accepted_quantity)
                 if accepted <= 0:
                     continue
-                self.session.add(
-                    StockMovement(
-                        financial_year_id=receipt.financial_year_id,
-                        store_id=receipt.store_id,
+                if item_categories[line.item_id] == "ASSET":
+                    asset_inputs = [AssetReceiptInput(**d) for d in (line.asset_details or [])]
+                    await asset_service.create_from_receipt(
+                        receipt_line_id=line.id,
                         item_id=line.item_id,
-                        movement_date=receipt.receipt_date,
-                        movement_type="RECEIPT",
-                        quantity_in=accepted,
-                        quantity_out=Decimal("0"),
-                        reference_type="RECEIPT_LINE",
-                        reference_id=line.id,
-                        reference_no=receipt.receipt_no,
-                        posting_group_id=posting_group_id,
-                        remarks=line.remarks,
+                        store_id=receipt.store_id,
+                        financial_year_id=receipt.financial_year_id,
+                        receipt_date=receipt.receipt_date,
+                        asset_inputs=asset_inputs,
+                        receipt_no=receipt.receipt_no,
+                        actor_user_id=actor_id,
                     )
-                )
+                else:
+                    self.session.add(
+                        StockMovement(
+                            financial_year_id=receipt.financial_year_id,
+                            store_id=receipt.store_id,
+                            item_id=line.item_id,
+                            movement_date=receipt.receipt_date,
+                            movement_type="RECEIPT",
+                            quantity_in=accepted,
+                            quantity_out=Decimal("0"),
+                            reference_type="RECEIPT_LINE",
+                            reference_id=line.id,
+                            reference_no=receipt.receipt_no,
+                            posting_group_id=posting_group_id,
+                            remarks=line.remarks,
+                        )
+                    )
 
             receipt.status = "POSTED"
             receipt.posted_at = now

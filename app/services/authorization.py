@@ -85,3 +85,45 @@ class AuthorizationService:
             return user
 
         raise HTTPException(403, "No controlling officer is configured for this store")
+
+    async def get_visible_stores(self, user_id: int) -> list[int] | None:
+        """Return a list of store IDs visible to the user, or None for department-wide visibility."""
+        user = await self.session.get(User, user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(403, "User is inactive or not found")
+
+        stmt = (
+            select(Role.code)
+            .join(user_roles, user_roles.c.role_id == Role.id)
+            .where(
+                user_roles.c.user_id == user_id,
+                Role.is_active.is_(True),
+            )
+        )
+        role_codes = set((await self.session.scalars(stmt)).all())
+
+        # Department-wide visibility
+        if "DIRECTOR" in role_codes or "SUPERINTENDENT" in role_codes:
+            return None
+
+        visible_store_ids = set()
+
+        # Central store visibility
+        if "DEPUTY_SUPDT_STORES" in role_codes:
+            central_stores = await self.session.scalars(select(Store.id).where(Store.store_type == "CENTRAL"))
+            visible_store_ids.update(central_stores.all())
+
+        # Branch head visibility
+        if "BRANCH_HEAD" in role_codes and user.office_id is not None:
+            branch_stores = await self.session.scalars(
+                select(Store.id).where(Store.office_id == user.office_id, Store.store_type == "BRANCH")
+            )
+            visible_store_ids.update(branch_stores.all())
+
+        # Assigned stores visibility
+        assigned_stores = await self.session.scalars(
+            select(user_stores.c.store_id).where(user_stores.c.user_id == user_id)
+        )
+        visible_store_ids.update(assigned_stores.all())
+
+        return list(visible_store_ids)

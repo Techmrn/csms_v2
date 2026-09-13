@@ -16,6 +16,7 @@ from app.models.stock_return import StockReturn, StockReturnLine
 from app.models.store import Store
 from app.models.unit import Unit
 from app.models.user import User, user_roles, user_stores
+from app.models.asset import Asset, AssetDetail, AssetMovement, ReceiptLineAsset
 
 __all__ = [
     "Category",
@@ -55,6 +56,10 @@ __all__ = [
     "AdjustmentLine",
     "UnserviceableMaterial",
     "UnserviceableLine",
+    "Asset",
+    "AssetDetail",
+    "AssetMovement",
+    "ReceiptLineAsset",
 ]
 
 from app.models.requisition import CentralStoreRequisition, CentralStoreRequisitionLine

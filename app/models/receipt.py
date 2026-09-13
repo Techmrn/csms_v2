@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -84,6 +85,7 @@ class ReceiptLine(Base):
     )
     unit_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    asset_details: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
 
     receipt: Mapped[Receipt] = relationship(back_populates="lines")
     item: Mapped["Item"] = relationship()
