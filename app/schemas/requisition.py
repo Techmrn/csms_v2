@@ -17,7 +17,6 @@ class RequisitionCreate(BaseModel):
     reference_no: str | None = None
     remarks: str | None = None
     lines: list[RequisitionLineCreate] = Field(min_length=1)
-    actor_id: int
 
 
 class RequisitionApprovalLine(BaseModel):
@@ -26,12 +25,10 @@ class RequisitionApprovalLine(BaseModel):
 
 
 class BranchApprovalRequest(BaseModel):
-    actor_id: int
     remarks: str | None = None
 
 
 class CentralApprovalRequest(BaseModel):
-    actor_id: int
     lines: list[RequisitionApprovalLine] = Field(min_length=1)
     remarks: str | None = None
 

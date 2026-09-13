@@ -15,13 +15,11 @@ class StockVerificationCreate(BaseModel):
     verification_date: date
     financial_year_id: int
     store_id: int
-    actor_id: int
     remarks: str | None = None
     lines: list[StockVerificationLineCreate] = Field(min_length=1)
 
 
 class StockVerificationAuthorizeRequest(BaseModel):
-    actor_id: int
     remarks: str | None = None
 
 
@@ -57,18 +55,15 @@ class StockVerificationResponse(BaseModel):
 class AdjustmentCreateFromVerificationRequest(BaseModel):
     verification_id: int
     adjustment_type: str
-    actor_id: int
     reason: str
     remarks: str | None = None
 
 
 class AdjustmentAuthorizeRequest(BaseModel):
-    actor_id: int
     remarks: str | None = None
 
 
 class AdjustmentPostRequest(BaseModel):
-    actor_id: int
     remarks: str | None = None
 
 
@@ -115,14 +110,12 @@ class UnserviceableCreate(BaseModel):
     date: date
     financial_year_id: int
     store_id: int
-    actor_id: int
     reason: str
     remarks: str | None = None
     lines: list[UnserviceableLineCreate] = Field(min_length=1)
 
 
 class UnserviceableActionRequest(BaseModel):
-    actor_id: int
     remarks: str | None = None
 
 

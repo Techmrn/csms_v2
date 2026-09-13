@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.security.auth import get_current_user
+from app.models.user import User
 from app.schemas.transfer import (
     TransferDispatchRequest,
     TransferReceiveRequest,
@@ -24,7 +26,7 @@ async def list_transfers(
 
 
 @router.get("/{transfer_id}", response_model=TransferResponse)
-async def get_transfer(transfer_id: int, session: AsyncSession = Depends(get_db_session)):
+async def get_transfer(transfer_id: int, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
     return await TransferService(session).get(transfer_id)
 
 
@@ -32,24 +34,27 @@ async def get_transfer(transfer_id: int, session: AsyncSession = Depends(get_db_
 async def dispatch_transfer(
     requisition_id: int,
     payload: TransferDispatchRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await TransferService(session).dispatch(requisition_id, payload)
+    return await TransferService(session).dispatch(requisition_id, payload, current_user.id)
 
 
 @router.post("/{transfer_id}/receive", response_model=TransferResponse)
 async def receive_transfer(
     transfer_id: int,
     payload: TransferReceiveRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await TransferService(session).receive(transfer_id, payload)
+    return await TransferService(session).receive(transfer_id, payload, current_user.id)
 
 
 @router.post("/discrepancies/{discrepancy_id}/resolve", response_model=TransferDiscrepancyResponse)
 async def resolve_discrepancy(
     discrepancy_id: int,
     payload: TransferDiscrepancyResolutionRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await TransferService(session).resolve_discrepancy(discrepancy_id, payload)
+    return await TransferService(session).resolve_discrepancy(discrepancy_id, payload, current_user.id)

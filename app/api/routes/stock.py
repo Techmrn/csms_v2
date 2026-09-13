@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.security.auth import get_current_user
+from app.models.user import User
 from app.schemas.stock import OpeningStockCreate, OpeningStockResponse, StockBalanceResponse, StockRegisterRow
 from app.services.stock import StockService
 
@@ -13,11 +15,12 @@ router = APIRouter(prefix="/stock", tags=["stock"])
 @router.post("/openings", response_model=OpeningStockResponse, status_code=status.HTTP_201_CREATED)
 async def create_opening(
     payload: OpeningStockCreate,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     service = StockService(session)
     try:
-        opening = await service.create_opening(payload)
+        opening = await service.create_opening(payload, current_user.id)
         await session.commit()
         await session.refresh(opening)
         return opening
@@ -32,11 +35,12 @@ async def create_opening(
 @router.post("/openings/{opening_id}/post", response_model=OpeningStockResponse)
 async def post_opening(
     opening_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     service = StockService(session)
     try:
-        return await service.post_opening(opening_id)
+        return await service.post_opening(opening_id, current_user.id)
     except HTTPException:
         await session.rollback()
         raise
@@ -50,6 +54,7 @@ async def current_stock(
     store_id: int,
     financial_year_id: int,
     item_id: int | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     rows = await StockService(session).current_stock(store_id, financial_year_id, item_id)
@@ -74,6 +79,7 @@ async def stock_register(
     item_id: int,
     from_date: date | None = None,
     to_date: date | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     rows = await StockService(session).stock_register(

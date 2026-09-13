@@ -33,17 +33,14 @@ class PettyPurchaseCreate(BaseModel):
     reference_no: str | None = None
     invoice_no: str | None = None
     remarks: str | None = None
-    actor_id: int
     lines: list[PettyPurchaseLineCreate] = Field(min_length=1)
 
 
 class PettyPurchaseVerifyRequest(BaseModel):
-    actor_id: int
     remarks: str | None = None
 
 
 class PettyPurchasePostRequest(BaseModel):
-    actor_id: int
     remarks: str | None = None
 
 

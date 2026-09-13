@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.security.auth import get_current_user
+from app.models.user import User
 from app.schemas.office import OfficeCreate, OfficeResponse
 from app.services.office import OfficeService
 
@@ -14,7 +16,7 @@ async def list_offices(session: AsyncSession = Depends(get_db_session)):
 
 
 @router.post("", response_model=OfficeResponse, status_code=status.HTTP_201_CREATED)
-async def create_office(payload: OfficeCreate, session: AsyncSession = Depends(get_db_session)):
+async def create_office(payload: OfficeCreate, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
     service = OfficeService(session)
     try:
         office = await service.create_office(payload)

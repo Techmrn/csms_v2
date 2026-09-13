@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.security.auth import get_current_user
+from app.models.user import User
 from app.schemas.petty_purchase import (
     PettyPurchaseCreate,
     PettyPurchasePostRequest,
@@ -16,9 +18,10 @@ router = APIRouter(prefix="/petty-purchases", tags=["petty-purchases"])
 @router.post("", response_model=PettyPurchaseResponse, status_code=status.HTTP_201_CREATED)
 async def create_petty_purchase(
     payload: PettyPurchaseCreate,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await PettyPurchaseService(session).create(payload)
+    return await PettyPurchaseService(session).create(payload, current_user.id)
 
 
 @router.get("", response_model=list[PettyPurchaseResponse])
@@ -42,15 +45,17 @@ async def get_petty_purchase(
 async def verify_petty_purchase(
     petty_purchase_id: int,
     payload: PettyPurchaseVerifyRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await PettyPurchaseService(session).verify(petty_purchase_id, payload)
+    return await PettyPurchaseService(session).verify(petty_purchase_id, payload, current_user.id)
 
 
 @router.post("/{petty_purchase_id}/post", response_model=PettyPurchaseResponse)
 async def post_petty_purchase(
     petty_purchase_id: int,
     payload: PettyPurchasePostRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await PettyPurchaseService(session).post(petty_purchase_id, payload)
+    return await PettyPurchaseService(session).post(petty_purchase_id, payload, current_user.id)

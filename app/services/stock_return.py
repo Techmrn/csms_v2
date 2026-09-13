@@ -25,9 +25,14 @@ class StockReturnService:
         self.session = session
         self.repository = StockReturnRepository(session)
 
-    async def create(self, payload: StockReturnCreate) -> StockReturn:
+    async def create(self, payload: StockReturnCreate, actor_id: int | None = None) -> StockReturn:
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
         store = await self.session.get(Store, payload.store_id)
+        if actor_id is not None:
+            from app.services.authorization import AuthorizationService
+            auth = AuthorizationService(self.session)
+            await auth.require_permission(actor_id, "STOCK_RETURN")
+            await auth.require_store_assignment(actor_id, payload.store_id)
         if fy is None:
             raise HTTPException(404, "Financial year not found")
         if store is None:
@@ -114,10 +119,15 @@ class StockReturnService:
             raise HTTPException(500, "Return could not be reloaded")
         return result
 
-    async def verify(self, return_id: int) -> StockReturn:
+    async def verify(self, return_id: int, actor_id: int | None = None) -> StockReturn:
         stock_return = await self.repository.get(return_id, for_update=True)
         if stock_return is None:
             raise HTTPException(404, "Return not found")
+        if actor_id is not None:
+            from app.services.authorization import AuthorizationService
+            auth = AuthorizationService(self.session)
+            await auth.require_permission(actor_id, "STOCK_RETURN")
+            await auth.require_store_assignment(actor_id, stock_return.store_id)
         if stock_return.status != "OPEN":
             raise HTTPException(409, f"Return is {stock_return.status} and cannot be verified")
         stock_return.status = "VERIFIED"
@@ -128,10 +138,15 @@ class StockReturnService:
             raise HTTPException(500, "Return could not be reloaded")
         return result
 
-    async def post(self, return_id: int) -> StockReturn:
+    async def post(self, return_id: int, actor_id: int | None = None) -> StockReturn:
         stock_return = await self.repository.get(return_id, for_update=True)
         if stock_return is None:
             raise HTTPException(404, "Return not found")
+        if actor_id is not None:
+            from app.services.authorization import AuthorizationService
+            auth = AuthorizationService(self.session)
+            await auth.require_permission(actor_id, "STOCK_RETURN")
+            await auth.require_store_assignment(actor_id, stock_return.store_id)
         if stock_return.status != "VERIFIED":
             raise HTTPException(409, f"Return is {stock_return.status}; only VERIFIED returns can be posted")
 

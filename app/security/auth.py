@@ -94,3 +94,13 @@ def require_permission(permission_code: str):
         return current_user
 
     return dependency
+
+
+def bind_authenticated_actor(payload, current_user: User):
+    """Bind any legacy actor_id field to the authenticated user."""
+    if hasattr(payload, "actor_id"):
+        supplied = getattr(payload, "actor_id")
+        if supplied is not None and supplied != current_user.id:
+            raise HTTPException(status_code=403, detail="actor_id does not match authenticated user")
+        setattr(payload, "actor_id", current_user.id)
+    return payload

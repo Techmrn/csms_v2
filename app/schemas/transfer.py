@@ -10,7 +10,6 @@ class TransferDispatchLine(BaseModel):
 
 class TransferDispatchRequest(BaseModel):
     transfer_date: date | None = None
-    actor_id: int
     lines: list[TransferDispatchLine] = Field(min_length=1)
     remarks: str | None = None
 
@@ -22,13 +21,11 @@ class TransferReceiveLine(BaseModel):
 
 class TransferReceiveRequest(BaseModel):
     receive_date: date
-    actor_id: int
     lines: list[TransferReceiveLine] = Field(min_length=1)
     remarks: str | None = None
 
 
 class TransferDiscrepancyResolutionRequest(BaseModel):
-    actor_id: int
     resolution_type: str
     resolution: str = Field(min_length=1)
 

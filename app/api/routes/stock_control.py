@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
+from app.security.auth import get_current_user
+from app.models.user import User
 from app.schemas.stock_control import (
     AdjustmentAuthorizeRequest,
     AdjustmentCreateFromVerificationRequest,
@@ -23,8 +25,12 @@ unserviceable_router = APIRouter(prefix="/stock/unserviceable", tags=["unservice
 
 
 @verification_router.post("", response_model=StockVerificationResponse, status_code=status.HTTP_201_CREATED)
-async def create_verification(payload: StockVerificationCreate, session: AsyncSession = Depends(get_db_session)):
-    return await StockVerificationService(session).create(payload)
+async def create_verification(
+    payload: StockVerificationCreate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    return await StockVerificationService(session).create(payload, current_user.id)
 
 
 @verification_router.get("", response_model=list[StockVerificationResponse])
@@ -37,7 +43,7 @@ async def list_verifications(
 
 
 @verification_router.get("/{verification_id}", response_model=StockVerificationResponse)
-async def get_verification(verification_id: int, session: AsyncSession = Depends(get_db_session)):
+async def get_verification(verification_id: int, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
     return await StockVerificationService(session).get(verification_id)
 
 
@@ -45,17 +51,19 @@ async def get_verification(verification_id: int, session: AsyncSession = Depends
 async def authorize_verification(
     verification_id: int,
     payload: StockVerificationAuthorizeRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await StockVerificationService(session).authorize(verification_id, payload)
+    return await StockVerificationService(session).authorize(verification_id, payload, current_user.id)
 
 
 @adjustment_router.post("/from-verification", response_model=AdjustmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_adjustment_from_verification(
     payload: AdjustmentCreateFromVerificationRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await AdjustmentService(session).create_from_verification(payload)
+    return await AdjustmentService(session).create_from_verification(payload, current_user.id)
 
 
 @adjustment_router.get("", response_model=list[AdjustmentResponse])
@@ -68,7 +76,7 @@ async def list_adjustments(
 
 
 @adjustment_router.get("/{adjustment_id}", response_model=AdjustmentResponse)
-async def get_adjustment(adjustment_id: int, session: AsyncSession = Depends(get_db_session)):
+async def get_adjustment(adjustment_id: int, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
     return await AdjustmentService(session).get(adjustment_id)
 
 
@@ -76,26 +84,29 @@ async def get_adjustment(adjustment_id: int, session: AsyncSession = Depends(get
 async def authorize_adjustment(
     adjustment_id: int,
     payload: AdjustmentAuthorizeRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await AdjustmentService(session).authorize(adjustment_id, payload)
+    return await AdjustmentService(session).authorize(adjustment_id, payload, current_user.id)
 
 
 @adjustment_router.post("/{adjustment_id}/post", response_model=AdjustmentResponse)
 async def post_adjustment(
     adjustment_id: int,
     payload: AdjustmentPostRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await AdjustmentService(session).post(adjustment_id, payload)
+    return await AdjustmentService(session).post(adjustment_id, payload, current_user.id)
 
 
 @unserviceable_router.post("", response_model=UnserviceableResponse, status_code=status.HTTP_201_CREATED)
 async def create_unserviceable(
     payload: UnserviceableCreate,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await UnserviceableService(session).create(payload)
+    return await UnserviceableService(session).create(payload, current_user.id)
 
 
 @unserviceable_router.get("", response_model=list[UnserviceableResponse])
@@ -108,7 +119,7 @@ async def list_unserviceable(
 
 
 @unserviceable_router.get("/{record_id}", response_model=UnserviceableResponse)
-async def get_unserviceable(record_id: int, session: AsyncSession = Depends(get_db_session)):
+async def get_unserviceable(record_id: int, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
     return await UnserviceableService(session).get(record_id)
 
 
@@ -116,24 +127,27 @@ async def get_unserviceable(record_id: int, session: AsyncSession = Depends(get_
 async def verify_unserviceable(
     record_id: int,
     payload: UnserviceableActionRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await UnserviceableService(session).verify(record_id, payload)
+    return await UnserviceableService(session).verify(record_id, payload, current_user.id)
 
 
 @unserviceable_router.post("/{record_id}/authorize", response_model=UnserviceableResponse)
 async def authorize_unserviceable(
     record_id: int,
     payload: UnserviceableActionRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await UnserviceableService(session).authorize(record_id, payload)
+    return await UnserviceableService(session).authorize(record_id, payload, current_user.id)
 
 
 @unserviceable_router.post("/{record_id}/post", response_model=UnserviceableResponse)
 async def post_unserviceable(
     record_id: int,
     payload: UnserviceableActionRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await UnserviceableService(session).post(record_id, payload)
+    return await UnserviceableService(session).post(record_id, payload, current_user.id)

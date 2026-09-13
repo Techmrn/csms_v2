@@ -34,8 +34,8 @@ class TransferService:
         self.auth = AuthorizationService(session)
         self.stock = StockRepository(session)
 
-    async def dispatch(self, requisition_id: int, payload: TransferDispatchRequest):
-        await self.auth.require_permission(payload.actor_id, "STOCK_TRANSFER_DISPATCH")
+    async def dispatch(self, requisition_id: int, payload: TransferDispatchRequest, actor_id: int):
+        await self.auth.require_permission(actor_id, "STOCK_TRANSFER_DISPATCH")
         requisition = await self.session.scalar(
             select(CentralStoreRequisition)
             .options(selectinload(CentralStoreRequisition.lines))
@@ -60,7 +60,7 @@ class TransferService:
         )
         if source_store is None:
             raise HTTPException(409, "Central Store is not configured")
-        await self.auth.require_store_assignment(payload.actor_id, source_store.id)
+        await self.auth.require_store_assignment(actor_id, source_store.id)
 
         transfer_date = payload.transfer_date or date.today()
         source_fy = await self.session.get(FinancialYear, requisition.financial_year_id)
@@ -124,7 +124,7 @@ class TransferService:
 
         if total_dispatch == 0:
             requisition.status = "CLOSED"
-            requisition.closed_by = payload.actor_id
+            requisition.closed_by = actor_id
             requisition.closed_at = datetime.now(timezone.utc)
             await self.session.commit()
             return None
@@ -138,7 +138,7 @@ class TransferService:
             requisition_id=requisition.id,
             status="APPROVED",
             remarks=payload.remarks,
-            created_by=payload.actor_id,
+            created_by=actor_id,
             lines=dispatch_lines,
         )
         self.session.add(transfer)
@@ -159,11 +159,11 @@ class TransferService:
                     reference_id=line.id,
                     reference_no=transfer.transfer_no,
                     posting_group_id=posting_group,
-                    created_by=payload.actor_id,
+                    created_by=actor_id,
                 )
             )
         transfer.status = "DISPATCHED"
-        transfer.dispatched_by = payload.actor_id
+        transfer.dispatched_by = actor_id
         transfer.dispatched_at = datetime.now(timezone.utc)
         requisition.status = "DISPATCHED"
         if payload.remarks:
@@ -171,14 +171,14 @@ class TransferService:
         await self.session.commit()
         return await self.repository.get(transfer.id)
 
-    async def receive(self, transfer_id: int, payload: TransferReceiveRequest):
-        await self.auth.require_permission(payload.actor_id, "STOCK_TRANSFER_RECEIVE")
+    async def receive(self, transfer_id: int, payload: TransferReceiveRequest, actor_id: int):
+        await self.auth.require_permission(actor_id, "STOCK_TRANSFER_RECEIVE")
         transfer = await self.repository.get(transfer_id, for_update=True)
         if transfer is None:
             raise HTTPException(404, "Transfer not found")
         if transfer.status != "DISPATCHED":
             raise HTTPException(409, f"Transfer is {transfer.status}; receipt is not allowed")
-        await self.auth.require_store_assignment(payload.actor_id, transfer.destination_store_id)
+        await self.auth.require_store_assignment(actor_id, transfer.destination_store_id)
 
         destination_fy = await self._financial_year_for_date(payload.receive_date)
         if destination_fy is None:
@@ -229,7 +229,7 @@ class TransferService:
                         reference_id=line.id,
                         reference_no=transfer.transfer_no,
                         posting_group_id=posting_group,
-                        created_by=payload.actor_id,
+                        created_by=actor_id,
                     )
                 )
 
@@ -251,13 +251,13 @@ class TransferService:
                             "SHORT_RECEIPT" if physical_qty < line.quantity else "EXCESS_RECEIPT"
                         ),
                         discrepancy_quantity=abs(line.quantity - physical_qty),
-                        reported_by=payload.actor_id,
+                        reported_by=actor_id,
                         reported_at=datetime.now(timezone.utc),
                         status="OPEN",
                     )
                 )
 
-        transfer.received_by = payload.actor_id
+        transfer.received_by = actor_id
         transfer.received_at = datetime.now(timezone.utc)
         self.session.add_all(discrepancy_rows)
         if discrepancy_found:
@@ -265,10 +265,10 @@ class TransferService:
             requisition.status = "DISCREPANCY"
         else:
             transfer.status = "CLOSED"
-            transfer.closed_by = payload.actor_id
+            transfer.closed_by = actor_id
             transfer.closed_at = datetime.now(timezone.utc)
             requisition.status = "CLOSED"
-            requisition.closed_by = payload.actor_id
+            requisition.closed_by = actor_id
             requisition.closed_at = datetime.now(timezone.utc)
 
         await self.session.commit()
@@ -278,9 +278,10 @@ class TransferService:
         self,
         discrepancy_id: int,
         payload: TransferDiscrepancyResolutionRequest,
+        actor_id: int,
     ):
         user = await self.auth.require_permission(
-            payload.actor_id, "STOCK_TRANSFER_DISCREPANCY_RESOLVE"
+            actor_id, "STOCK_TRANSFER_DISCREPANCY_RESOLVE"
         )
         discrepancy = await self.session.get(
             TransferDiscrepancy, discrepancy_id, with_for_update=True
@@ -335,7 +336,7 @@ class TransferService:
                     reference_id=discrepancy.id,
                     reference_no=transfer.transfer_no,
                     posting_group_id=uuid4(),
-                    created_by=payload.actor_id,
+                    created_by=actor_id,
                 )
             )
             requisition = await self.session.scalar(
@@ -354,7 +355,7 @@ class TransferService:
 
         discrepancy.status = "CLOSED"
         discrepancy.resolution = payload.resolution
-        discrepancy.resolved_by = payload.actor_id
+        discrepancy.resolved_by = actor_id
         discrepancy.resolved_at = datetime.now(timezone.utc)
 
         remaining = await self.session.scalar(
@@ -367,7 +368,7 @@ class TransferService:
         )
         if remaining is None:
             transfer.status = "CLOSED"
-            transfer.closed_by = payload.actor_id
+            transfer.closed_by = actor_id
             transfer.closed_at = datetime.now(timezone.utc)
             requisition = await self.session.scalar(
                 select(CentralStoreRequisition)
@@ -376,7 +377,7 @@ class TransferService:
             )
             if requisition is not None:
                 requisition.status = "CLOSED"
-                requisition.closed_by = payload.actor_id
+                requisition.closed_by = actor_id
                 requisition.closed_at = datetime.now(timezone.utc)
 
         await self.session.commit()

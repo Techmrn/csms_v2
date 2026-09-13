@@ -34,9 +34,9 @@ class PettyPurchaseService:
         self.stock = StockRepository(session)
         self.auth = AuthorizationService(session)
 
-    async def create(self, payload: PettyPurchaseCreate) -> PettyPurchase:
-        await self.auth.require_permission(payload.actor_id, "PETTY_PURCHASE_CREATE")
-        await self.auth.require_store_assignment(payload.actor_id, payload.store_id)
+    async def create(self, payload: PettyPurchaseCreate, actor_id: int) -> PettyPurchase:
+        await self.auth.require_permission(actor_id, "PETTY_PURCHASE_CREATE")
+        await self.auth.require_store_assignment(actor_id, payload.store_id)
 
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
         store = await self.session.get(Store, payload.store_id)
@@ -175,22 +175,22 @@ class PettyPurchaseService:
             invoice_no=payload.invoice_no,
             status="OPEN",
             remarks=payload.remarks,
-            created_by=payload.actor_id,
+            created_by=actor_id,
             lines=lines,
         )
         self.session.add(petty_purchase)
         await self.session.commit()
         return await self.repository.get(petty_purchase.id)
 
-    async def verify(self, petty_purchase_id: int, payload: PettyPurchaseVerifyRequest) -> PettyPurchase:
+    async def verify(self, petty_purchase_id: int, payload: PettyPurchaseVerifyRequest, actor_id: int) -> PettyPurchase:
         purchase = await self.repository.get(petty_purchase_id, for_update=True)
         if purchase is None:
             raise HTTPException(404, "Petty purchase not found")
         if purchase.status != "OPEN":
             raise HTTPException(409, f"Petty purchase is {purchase.status} and cannot be verified")
 
-        await self.auth.require_permission(payload.actor_id, "PETTY_PURCHASE_VERIFY")
-        await self.auth.require_store_controller(payload.actor_id, purchase.store_id)
+        await self.auth.require_permission(actor_id, "PETTY_PURCHASE_VERIFY")
+        await self.auth.require_store_controller(actor_id, purchase.store_id)
 
         fy = await self.session.get(FinancialYear, purchase.financial_year_id)
         if fy is None or fy.is_closed:
@@ -199,21 +199,21 @@ class PettyPurchaseService:
             raise HTTPException(422, "Petty purchase date is outside the financial year")
 
         purchase.status = "VERIFIED"
-        purchase.verified_by = payload.actor_id
+        purchase.verified_by = actor_id
         purchase.verified_at = datetime.now(timezone.utc)
         if payload.remarks:
             purchase.remarks = payload.remarks
         await self.session.commit()
         return await self.repository.get(purchase.id)
 
-    async def post(self, petty_purchase_id: int, payload: PettyPurchasePostRequest) -> PettyPurchase:
-        await self.auth.require_permission(payload.actor_id, "PETTY_PURCHASE_POST")
+    async def post(self, petty_purchase_id: int, payload: PettyPurchasePostRequest, actor_id: int) -> PettyPurchase:
+        await self.auth.require_permission(actor_id, "PETTY_PURCHASE_POST")
         purchase = await self.repository.get(petty_purchase_id, for_update=True)
         if purchase is None:
             raise HTTPException(404, "Petty purchase not found")
         if purchase.status != "VERIFIED":
             raise HTTPException(409, f"Petty purchase is {purchase.status}; only VERIFIED purchases can be posted")
-        await self.auth.require_store_assignment(payload.actor_id, purchase.store_id)
+        await self.auth.require_store_assignment(actor_id, purchase.store_id)
 
         fy = await self.session.get(FinancialYear, purchase.financial_year_id)
         if fy is None or fy.is_closed:
@@ -339,7 +339,7 @@ class PettyPurchaseService:
                     status="FINALIZED",
                     remarks=purchase.remarks,
                     created_by=purchase.created_by,
-                    posted_by=payload.actor_id,
+                    posted_by=actor_id,
                     posted_at=now,
                     posting_group_id=posting_group_id,
                 )
@@ -383,7 +383,7 @@ class PettyPurchaseService:
                 indent.status = "FINALIZED"
 
             purchase.status = "POSTED"
-            purchase.posted_by = payload.actor_id
+            purchase.posted_by = actor_id
             purchase.posted_at = now
             purchase.posting_group_id = posting_group_id
             if payload.remarks:

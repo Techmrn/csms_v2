@@ -24,9 +24,14 @@ class ReceiptService:
         self.session = session
         self.repository = ReceiptRepository(session)
 
-    async def create(self, payload: ReceiptCreate) -> Receipt:
+    async def create(self, payload: ReceiptCreate, actor_id: int | None = None) -> Receipt:
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
         store = await self.session.get(Store, payload.store_id)
+        if actor_id is not None:
+            from app.services.authorization import AuthorizationService
+            auth = AuthorizationService(self.session)
+            await auth.require_permission(actor_id, "STOCK_RECEIPT")
+            await auth.require_store_assignment(actor_id, payload.store_id)
         if fy is None:
             raise HTTPException(404, "Financial year not found")
         if store is None:
@@ -102,10 +107,15 @@ class ReceiptService:
             raise HTTPException(500, "Receipt could not be reloaded")
         return result
 
-    async def verify(self, receipt_id: int) -> Receipt:
+    async def verify(self, receipt_id: int, actor_id: int | None = None) -> Receipt:
         receipt = await self.repository.get(receipt_id, for_update=True)
         if receipt is None:
             raise HTTPException(404, "Receipt not found")
+        if actor_id is not None:
+            from app.services.authorization import AuthorizationService
+            auth = AuthorizationService(self.session)
+            await auth.require_permission(actor_id, "STOCK_RECEIPT")
+            await auth.require_store_assignment(actor_id, receipt.store_id)
         if receipt.status != "OPEN":
             raise HTTPException(409, f"Receipt is {receipt.status} and cannot be verified")
 
@@ -131,10 +141,15 @@ class ReceiptService:
             raise HTTPException(500, "Receipt could not be reloaded")
         return result
 
-    async def post(self, receipt_id: int) -> Receipt:
+    async def post(self, receipt_id: int, actor_id: int | None = None) -> Receipt:
         receipt = await self.repository.get(receipt_id, for_update=True)
         if receipt is None:
             raise HTTPException(404, "Receipt not found")
+        if actor_id is not None:
+            from app.services.authorization import AuthorizationService
+            auth = AuthorizationService(self.session)
+            await auth.require_permission(actor_id, "STOCK_RECEIPT")
+            await auth.require_store_assignment(actor_id, receipt.store_id)
         if receipt.status != "VERIFIED":
             raise HTTPException(409, f"Receipt is {receipt.status}; only VERIFIED receipts can be posted")
 

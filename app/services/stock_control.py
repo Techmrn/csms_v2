@@ -51,9 +51,9 @@ class StockVerificationService:
         self.stock = StockRepository(session)
         self.auth = AuthorizationService(session)
 
-    async def create(self, payload: StockVerificationCreate) -> StockVerification:
-        await self.auth.require_permission(payload.actor_id, "STOCK_VERIFICATION_CREATE")
-        await self.auth.require_store_assignment(payload.actor_id, payload.store_id)
+    async def create(self, payload: StockVerificationCreate, actor_id: int) -> StockVerification:
+        await self.auth.require_permission(actor_id, "STOCK_VERIFICATION_CREATE")
+        await self.auth.require_store_assignment(actor_id, payload.store_id)
 
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
         store = await self.session.get(Store, payload.store_id)
@@ -128,8 +128,8 @@ class StockVerificationService:
             store_id=payload.store_id,
             status="COUNTED",
             remarks=payload.remarks,
-            created_by=payload.actor_id,
-            counted_by=payload.actor_id,
+            created_by=actor_id,
+            counted_by=actor_id,
             counted_at=_now(),
             lines=rows,
         )
@@ -137,16 +137,16 @@ class StockVerificationService:
         await self.session.commit()
         return await self.repository.get(verification.id)
 
-    async def authorize(self, verification_id: int, payload: StockVerificationAuthorizeRequest) -> StockVerification:
-        await self.auth.require_permission(payload.actor_id, "STOCK_VERIFY")
+    async def authorize(self, verification_id: int, payload: StockVerificationAuthorizeRequest, actor_id: int) -> StockVerification:
+        await self.auth.require_permission(actor_id, "STOCK_VERIFY")
         verification = await self.repository.get(verification_id, for_update=True)
         if verification is None:
             raise HTTPException(404, "Stock verification not found")
         if verification.status != "COUNTED":
             raise HTTPException(409, f"Verification is {verification.status} and cannot be authorized")
-        if verification.created_by == payload.actor_id:
+        if verification.created_by == actor_id:
             raise HTTPException(403, "The person who recorded the verification cannot authorize it")
-        await self.auth.require_store_controller(payload.actor_id, verification.store_id)
+        await self.auth.require_store_controller(actor_id, verification.store_id)
 
         # A verification snapshot is only valid if stock has not changed after it
         # was captured. This prevents authorizing a variance against stale system data.
@@ -170,13 +170,13 @@ class StockVerificationService:
                     f"Stock for item {line.item_id} changed after verification snapshot; create a new verification",
                 )
 
-        verification.authorized_by = payload.actor_id
+        verification.authorized_by = actor_id
         verification.authorized_at = _now()
         verification.remarks = payload.remarks or verification.remarks
         has_variance = any(Decimal(line.variance_quantity) != 0 for line in verification.lines)
         verification.status = "AUTHORIZED" if has_variance else "CLOSED"
         if not has_variance:
-            verification.closed_by = payload.actor_id
+            verification.closed_by = actor_id
             verification.closed_at = _now()
         await self.session.commit()
         return await self.repository.get(verification.id)
@@ -211,8 +211,8 @@ class AdjustmentService:
         self.stock = StockRepository(session)
         self.auth = AuthorizationService(session)
 
-    async def create_from_verification(self, payload: AdjustmentCreateFromVerificationRequest) -> Adjustment:
-        await self.auth.require_permission(payload.actor_id, "STOCK_ADJUST_CREATE")
+    async def create_from_verification(self, payload: AdjustmentCreateFromVerificationRequest, actor_id: int) -> Adjustment:
+        await self.auth.require_permission(actor_id, "STOCK_ADJUST_CREATE")
         verification = await self.session.scalar(
             select(StockVerification)
             .options(selectinload(StockVerification.lines))
@@ -223,7 +223,7 @@ class AdjustmentService:
             raise HTTPException(404, "Stock verification not found")
         if verification.status != "AUTHORIZED":
             raise HTTPException(409, "Stock verification must be authorized before creating an adjustment")
-        await self.auth.require_store_assignment(payload.actor_id, verification.store_id)
+        await self.auth.require_store_assignment(actor_id, verification.store_id)
 
         if payload.adjustment_type not in {"ADJUSTMENT_IN", "ADJUSTMENT_OUT"}:
             raise HTTPException(422, "Invalid adjustment type")
@@ -265,39 +265,39 @@ class AdjustmentService:
             reference_no=verification.verification_no,
             status="OPEN",
             remarks=payload.remarks,
-            created_by=payload.actor_id,
+            created_by=actor_id,
             lines=lines,
         )
         self.session.add(adjustment)
         await self.session.commit()
         return await self.repository.get(adjustment.id)
 
-    async def authorize(self, adjustment_id: int, payload: AdjustmentAuthorizeRequest) -> Adjustment:
-        await self.auth.require_permission(payload.actor_id, "STOCK_ADJUST_AUTHORIZE")
+    async def authorize(self, adjustment_id: int, payload: AdjustmentAuthorizeRequest, actor_id: int) -> Adjustment:
+        await self.auth.require_permission(actor_id, "STOCK_ADJUST_AUTHORIZE")
         adjustment = await self.repository.get(adjustment_id, for_update=True)
         if adjustment is None:
             raise HTTPException(404, "Adjustment not found")
         if adjustment.status != "OPEN":
             raise HTTPException(409, f"Adjustment is {adjustment.status} and cannot be authorized")
-        if adjustment.created_by == payload.actor_id:
+        if adjustment.created_by == actor_id:
             raise HTTPException(403, "The person who created the adjustment cannot authorize it")
-        await self.auth.require_store_controller(payload.actor_id, adjustment.store_id)
+        await self.auth.require_store_controller(actor_id, adjustment.store_id)
         adjustment.status = "AUTHORIZED"
-        adjustment.authorized_by = payload.actor_id
+        adjustment.authorized_by = actor_id
         adjustment.authorized_at = _now()
         adjustment.remarks = payload.remarks or adjustment.remarks
         await self.session.commit()
         return await self.repository.get(adjustment.id)
 
-    async def post(self, adjustment_id: int, payload: AdjustmentPostRequest) -> Adjustment:
-        await self.auth.require_permission(payload.actor_id, "STOCK_ADJUST_POST")
+    async def post(self, adjustment_id: int, payload: AdjustmentPostRequest, actor_id: int) -> Adjustment:
+        await self.auth.require_permission(actor_id, "STOCK_ADJUST_POST")
         adjustment = await self.repository.get(adjustment_id, for_update=True)
         if adjustment is None:
             raise HTTPException(404, "Adjustment not found")
         if adjustment.status != "AUTHORIZED":
             raise HTTPException(409, f"Adjustment is {adjustment.status} and cannot be posted")
-        await self.auth.require_store_assignment(payload.actor_id, adjustment.store_id)
-        if adjustment.authorized_by == payload.actor_id:
+        await self.auth.require_store_assignment(actor_id, adjustment.store_id)
+        if adjustment.authorized_by == actor_id:
             raise HTTPException(403, "The authorizing officer cannot post the adjustment")
 
         verification = await self.session.scalar(
@@ -362,11 +362,11 @@ class AdjustmentService:
                     reference_no=adjustment.adjustment_no,
                     posting_group_id=posting_group_id,
                     remarks=line.remarks,
-                    created_by=payload.actor_id,
+                    created_by=actor_id,
                 )
             )
         adjustment.status = "POSTED"
-        adjustment.posted_by = payload.actor_id
+        adjustment.posted_by = actor_id
         adjustment.posted_at = _now()
         adjustment.posting_group_id = posting_group_id
         adjustment.remarks = payload.remarks or adjustment.remarks
@@ -381,7 +381,7 @@ class AdjustmentService:
             needs_out = any(Decimal(line.variance_quantity) < 0 for line in verification.lines)
             if (not needs_in or "ADJUSTMENT_IN" in posted_types) and (not needs_out or "ADJUSTMENT_OUT" in posted_types):
                 verification.status = "CLOSED"
-                verification.closed_by = payload.actor_id
+                verification.closed_by = actor_id
                 verification.closed_at = _now()
 
         await self.session.commit()
@@ -415,9 +415,9 @@ class UnserviceableService:
         self.stock = StockRepository(session)
         self.auth = AuthorizationService(session)
 
-    async def create(self, payload: UnserviceableCreate) -> UnserviceableMaterial:
-        await self.auth.require_permission(payload.actor_id, "STOCK_UNSERVICEABLE_CREATE")
-        await self.auth.require_store_assignment(payload.actor_id, payload.store_id)
+    async def create(self, payload: UnserviceableCreate, actor_id: int) -> UnserviceableMaterial:
+        await self.auth.require_permission(actor_id, "STOCK_UNSERVICEABLE_CREATE")
+        await self.auth.require_store_assignment(actor_id, payload.store_id)
 
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
         store = await self.session.get(Store, payload.store_id)
@@ -465,56 +465,56 @@ class UnserviceableService:
             status="REPORTED",
             reason=payload.reason,
             remarks=payload.remarks,
-            reported_by=payload.actor_id,
+            reported_by=actor_id,
             lines=lines,
         )
         self.session.add(record)
         await self.session.commit()
         return await self.repository.get(record.id)
 
-    async def verify(self, record_id: int, payload: UnserviceableActionRequest) -> UnserviceableMaterial:
-        await self.auth.require_permission(payload.actor_id, "STOCK_VERIFY")
+    async def verify(self, record_id: int, payload: UnserviceableActionRequest, actor_id: int) -> UnserviceableMaterial:
+        await self.auth.require_permission(actor_id, "STOCK_VERIFY")
         record = await self.repository.get(record_id, for_update=True)
         if record is None:
             raise HTTPException(404, "Unserviceable record not found")
         if record.status != "REPORTED":
             raise HTTPException(409, f"Unserviceable record is {record.status} and cannot be verified")
-        if record.reported_by == payload.actor_id:
+        if record.reported_by == actor_id:
             raise HTTPException(403, "The person reporting unserviceable stock cannot verify it")
-        await self.auth.require_store_controller(payload.actor_id, record.store_id)
+        await self.auth.require_store_controller(actor_id, record.store_id)
         record.status = "VERIFIED"
-        record.verified_by = payload.actor_id
+        record.verified_by = actor_id
         record.verified_at = _now()
         record.remarks = payload.remarks or record.remarks
         await self.session.commit()
         return await self.repository.get(record.id)
 
-    async def authorize(self, record_id: int, payload: UnserviceableActionRequest) -> UnserviceableMaterial:
-        await self.auth.require_permission(payload.actor_id, "STOCK_UNSERVICEABLE_AUTHORIZE")
+    async def authorize(self, record_id: int, payload: UnserviceableActionRequest, actor_id: int) -> UnserviceableMaterial:
+        await self.auth.require_permission(actor_id, "STOCK_UNSERVICEABLE_AUTHORIZE")
         record = await self.repository.get(record_id, for_update=True)
         if record is None:
             raise HTTPException(404, "Unserviceable record not found")
         if record.status != "VERIFIED":
             raise HTTPException(409, f"Unserviceable record is {record.status} and cannot be authorized")
-        await self.auth.require_store_controller(payload.actor_id, record.store_id)
-        if record.reported_by == payload.actor_id:
+        await self.auth.require_store_controller(actor_id, record.store_id)
+        if record.reported_by == actor_id:
             raise HTTPException(403, "The person reporting unserviceable stock cannot authorize it")
         record.status = "AUTHORIZED"
-        record.authorized_by = payload.actor_id
+        record.authorized_by = actor_id
         record.authorized_at = _now()
         record.remarks = payload.remarks or record.remarks
         await self.session.commit()
         return await self.repository.get(record.id)
 
-    async def post(self, record_id: int, payload: UnserviceableActionRequest) -> UnserviceableMaterial:
-        await self.auth.require_permission(payload.actor_id, "STOCK_UNSERVICEABLE_POST")
+    async def post(self, record_id: int, payload: UnserviceableActionRequest, actor_id: int) -> UnserviceableMaterial:
+        await self.auth.require_permission(actor_id, "STOCK_UNSERVICEABLE_POST")
         record = await self.repository.get(record_id, for_update=True)
         if record is None:
             raise HTTPException(404, "Unserviceable record not found")
         if record.status != "AUTHORIZED":
             raise HTTPException(409, f"Unserviceable record is {record.status} and cannot be posted")
-        await self.auth.require_store_assignment(payload.actor_id, record.store_id)
-        if record.authorized_by == payload.actor_id:
+        await self.auth.require_store_assignment(actor_id, record.store_id)
+        if record.authorized_by == actor_id:
             raise HTTPException(403, "The authorizing officer cannot post unserviceable stock")
 
         posting_group_id = uuid4()
@@ -561,11 +561,11 @@ class UnserviceableService:
                     reference_no=record.reference_no,
                     posting_group_id=posting_group_id,
                     remarks=line.reason or line.remarks or record.reason,
-                    created_by=payload.actor_id,
+                    created_by=actor_id,
                 )
             )
         record.status = "POSTED"
-        record.posted_by = payload.actor_id
+        record.posted_by = actor_id
         record.posted_at = _now()
         record.posting_group_id = posting_group_id
         record.remarks = payload.remarks or record.remarks

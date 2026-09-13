@@ -22,7 +22,12 @@ class StockService:
         self.session = session
         self.repository = StockRepository(session)
 
-    async def create_opening(self, payload: OpeningStockCreate) -> OpeningStock:
+    async def create_opening(self, payload: OpeningStockCreate, actor_id: int | None = None) -> OpeningStock:
+        if actor_id is not None:
+            from app.services.authorization import AuthorizationService
+            auth = AuthorizationService(self.session)
+            await auth.require_permission(actor_id, "STOCK_VERIFICATION_CREATE")
+            await auth.require_store_assignment(actor_id, payload.store_id)
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
         store = await self.session.get(Store, payload.store_id)
         if fy is None:
@@ -84,7 +89,7 @@ class StockService:
         await self.session.flush()
         return opening
 
-    async def post_opening(self, opening_id: int) -> OpeningStock:
+    async def post_opening(self, opening_id: int, actor_id: int | None = None) -> OpeningStock:
         """Development posting path until authentication/approval is wired in.
 
         Production policy will require the appropriate authorization transition before posting.
@@ -92,6 +97,10 @@ class StockService:
         opening = await self.session.get(OpeningStock, opening_id)
         if opening is None:
             raise HTTPException(status_code=404, detail="Opening stock not found")
+        if actor_id is not None:
+            from app.services.authorization import AuthorizationService
+            auth = AuthorizationService(self.session)
+            await auth.require_store_controller(actor_id, opening.store_id)
         if opening.status != "OPEN":
             raise HTTPException(status_code=409, detail=f"Opening stock is {opening.status}, not OPEN")
 
