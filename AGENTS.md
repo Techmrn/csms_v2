@@ -18,6 +18,12 @@ This project is a clean rebuild of the Central Store Management System.
 - Never directly edit stock balances.
 - Posted stock movements are immutable; corrections use compensating transactions.
 - Requested quantity and actual issued quantity are separate.
+- A manual physical indent entered by a Storekeeper is an approved document; saving it must atomically create/finalize the corresponding Issue. There is no Draft or separate issue-finalization step for manual indents.
+- Manual indent UI fields are Item, Unit, Requested Quantity, Available, Issued, and Remarks; Available is server-derived and Issued is the actual physical quantity issued, including zero/partial/full.
+- Manual indents may target the Storekeeper's permitted destination Office/Section; Central Store may issue to Directorate or an authorized branch office.
+- Opening stock is a one-time/manual migration/setup mechanism for a Store. Assigned Storekeepers may enter opening stock without Deputy Superintendent or Branch Head authorization.
+- Opening stock supports both CONSUMABLE and ASSET items. Consumables create OPENING StockMovement; existing assets are entered with their actual asset numbers and create Asset + AssetMovement(OPENING) records.
+- Opening stock posting must be atomic; a failed mixed consumable/asset opening rolls back all changes.
 - Zero and partial issues are valid.
 - Central Store shortages close the requisition at the actual dispatched quantity; do not create an automatic pending balance.
 - Supplier receipt stock is accepted quantity only.
@@ -74,3 +80,15 @@ This project is a clean rebuild of the Central Store Management System.
 - Unserviceable consumables create `UNSERVICEABLE` StockMovement OUT rows.
 - Asset unserviceability remains an Asset lifecycle operation and is not handled by the consumable unserviceable module.
 - Verification, adjustment, and unserviceable operations are FY-specific and cannot post into a closed FY.
+
+## Master and user administration rules
+- Master data and user administration are protected by explicit permissions; authentication alone is not sufficient.
+- Category types are only `CONSUMABLE` and `ASSET`; never introduce `MATERIAL` as a primary type.
+- Item Master contains permanent master items. Temporary item identities are created by Petty Purchase where required.
+- Office, Store and Section are organizational masters. Central Store is a Store under Directorate; Central Press is a separate Branch Office with its own Store.
+- User management assigns existing Roles and Store memberships; the UI does not create arbitrary permissions per user.
+- Roles & Permissions are read-only through the administration UI.
+- User passwords are stored only as Argon2 hashes.
+- Inventory Policy is optional by Store + Consumable Item. Reorder, low-stock, batch, expiry and FIFO/LIFO/FEFO settings are not mandatory.
+- Financial Years must not overlap; only one may be current. Closed FY status must be respected by transaction services.
+- Master codes are immutable after creation when they are identifiers referenced by transaction history.

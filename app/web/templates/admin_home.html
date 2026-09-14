@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — System Administration{% endblock %}
+{% block page_title %}System Administration{% endblock %}
+{% block content %}
+<div class="admin-hero card">
+  <div>
+    <div class="eyebrow admin-eyebrow">ADMIN CONTROL CENTRE</div>
+    <h2>System setup and access control</h2>
+    <p class="muted">Maintain the organization, master data and users. Operational transactions remain the responsibility of the designated Store and Office roles.</p>
+  </div>
+  <div class="admin-quick-actions">
+    <a class="button primary" href="/app/admin/offices">+ Office</a>
+    <a class="button primary" href="/app/admin/stores">+ Store</a>
+    <a class="button primary" href="/app/admin/sections">+ Section</a>
+    <a class="button" href="/app/admin/users">+ User</a>
+  </div>
+</div>
+
+<div class="admin-section-title">Organization</div>
+<div class="grid cols-4 admin-stat-grid">
+  <a class="admin-stat card stat-blue" href="/app/admin/offices"><div class="stat-label">Offices</div><div class="stat-value">{{ counts['offices'] or 0 }}</div><div class="stat-note">{{ counts['active_offices'] or 0 }} active</div></a>
+  <a class="admin-stat card stat-green" href="/app/admin/stores"><div class="stat-label">Stores</div><div class="stat-value">{{ counts['stores'] or 0 }}</div><div class="stat-note">{{ counts['active_stores'] or 0 }} active</div></a>
+  <a class="admin-stat card stat-purple" href="/app/admin/sections"><div class="stat-label">Sections</div><div class="stat-value">{{ counts['sections'] or 0 }}</div><div class="stat-note">{{ counts['active_sections'] or 0 }} active</div></a>
+  <a class="admin-stat card stat-orange" href="/app/admin/users"><div class="stat-label">Users</div><div class="stat-value">{{ counts['users'] or 0 }}</div><div class="stat-note">{{ counts['active_users'] or 0 }} active</div></a>
+</div>
+
+<div class="admin-section-title">Master data</div>
+<div class="grid cols-4 admin-stat-grid">
+  <a class="admin-stat card stat-teal" href="/app/admin/items"><div class="stat-label">Items</div><div class="stat-value">{{ counts['items'] or 0 }}</div><div class="stat-note">{{ counts['active_items'] or 0 }} active</div></a>
+  <a class="admin-stat card stat-gold" href="/app/admin/categories"><div class="stat-label">Categories</div><div class="stat-value">{{ counts['categories'] or 0 }}</div><div class="stat-note">Consumable / Asset</div></a>
+  <a class="admin-stat card stat-indigo" href="/app/admin/units"><div class="stat-label">Units</div><div class="stat-value">{{ counts['units'] or 0 }}</div><div class="stat-note">Quantity definitions</div></a>
+  <a class="admin-stat card stat-red" href="/app/admin/financial-years"><div class="stat-label">Financial Years</div><div class="stat-value">{{ counts['financial_years'] or 0 }}</div><div class="stat-note">{{ counts['current_financial_year'] or 'No current FY' }}</div></a>
+</div>
+
+<div class="admin-section-title">Administration areas</div>
+<div class="grid cols-3 admin-action-grid">
+  <a class="admin-action card" href="/app/admin/masters"><span class="admin-action-icon stat-blue-bg">M</span><span><strong>Master Data</strong><small>Categories, units, items, financial years and inventory policies.</small></span><span class="arrow">→</span></a>
+  <a class="admin-action card" href="/app/admin/organization"><span class="admin-action-icon stat-green-bg">O</span><span><strong>Organization</strong><small>Offices, stores and sections.</small></span><span class="arrow">→</span></a>
+  <a class="admin-action card" href="/app/admin/users"><span class="admin-action-icon stat-orange-bg">U</span><span><strong>Users</strong><small>Accounts, roles, office/section and store assignments.</small></span><span class="arrow">→</span></a>
+  <a class="admin-action card" href="/app/admin/roles"><span class="admin-action-icon stat-purple-bg">R</span><span><strong>Roles & Permissions</strong><small>Read-only permission matrix.</small></span><span class="arrow">→</span></a>
+  <a class="admin-action card" href="/app/admin/views"><span class="admin-action-icon stat-teal-bg">V</span><span><strong>All Views</strong><small>Read-only access to department-wide operational data.</small></span><span class="arrow">→</span></a>
+</div>
+{% endblock %}

@@ -80,3 +80,11 @@ Antigravity is used for verification/testing of this baseline. Do not redesign b
 
 ## UI route registration
 The server registers `app.web.routes.router` at the application root and mounts `/static` for the UI stylesheet. No database migration is required for the UI foundation.
+
+## Current operational workflow
+
+### Manual Indent
+A manual physical indent is an approved Store document. The Storekeeper enters Item, Unit, Requested Quantity, Available, Issued and Remarks. Saving the document immediately creates the Issue in the same atomic transaction; there is no separate draft or issue-finalization step.
+
+### Opening Stock
+Assigned Storekeepers can enter and post opening stock for their own Store without controller authorization. Consumables create OPENING StockMovement entries. Existing assets are entered with their real asset numbers and create Asset + AssetMovement records.

@@ -3,7 +3,9 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, BigInteger, CheckConstraint, Date, DateTime, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
+import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -113,9 +115,18 @@ class OpeningStockLine(Base):
     opening_stock_id: Mapped[int] = mapped_column(
         ForeignKey("opening_stocks.id", ondelete="CASCADE"), nullable=False
     )
+    store_id: Mapped[int] = mapped_column(ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False)
+    financial_year_id: Mapped[int] = mapped_column(
+        ForeignKey("financial_years.id", ondelete="RESTRICT"), nullable=False
+    )
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="RESTRICT"), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False)
     unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="RESTRICT"), nullable=False)
+    asset_details: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     remarks: Mapped[str | None] = mapped_column(nullable=True)
+    # Existing databases may contain historical duplicate opening lines created
+    # before the one-opening-per-item rule was introduced. Those rows are kept
+    # intact for audit/stock history and excluded from the new unique index.
+    legacy_duplicate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=sa.text("false"))
 
     opening_stock: Mapped[OpeningStock] = relationship(back_populates="lines")

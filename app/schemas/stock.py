@@ -4,10 +4,24 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 
 
+class OpeningAssetInput(BaseModel):
+    asset_no: str = Field(min_length=1, max_length=50)
+    serial_no: str | None = None
+    make: str | None = None
+    model: str | None = None
+    purchase_date: date | None = None
+    purchase_reference: str | None = None
+    purchase_value: Decimal | None = Field(default=None, ge=0)
+    warranty_expiry_date: date | None = None
+    technical_specifications: str | None = None
+    remarks: str | None = None
+
+
 class OpeningStockLineCreate(BaseModel):
     item_id: int
     quantity: Decimal = Field(gt=0)
     unit_id: int
+    asset_details: list[OpeningAssetInput] | None = None
     remarks: str | None = None
 
 

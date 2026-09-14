@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Petty Purchase{% endblock %}
+{% block page_title %}Petty Purchase{% endblock %}
+{% block content %}
+<div class="context-bar"><div class="context-title">Petty purchase register</div>{% if "PETTY_PURCHASE_CREATE" in permissions %}<a class="button primary" href="/app/petty-purchases/new">+ New petty purchase</a>{% endif %}</div>
+<div class="card table-card"><table><thead><tr><th>Number</th><th>Date</th><th>Store</th><th>Status</th><th>Lines</th><th>Actions</th></tr></thead><tbody>
+{% for p in purchases %}<tr><td>{{ p.petty_purchase_no }}</td><td>{{ p.purchase_date }}</td><td>{{ (stores|selectattr("id", "equalto", p.store_id)|first).name if (stores|selectattr("id", "equalto", p.store_id)|first) else p.store_id }}</td><td><span class="badge">{{ p.status }}</span></td><td>{{ p.lines|length }}</td><td>{% if p.status == 'OPEN' and 'PETTY_PURCHASE_VERIFY' in permissions %}<form method="post" action="/app/petty-purchases/{{ p.id }}/verify"><button class="button" type="submit">Verify</button></form>{% elif p.status == 'VERIFIED' and 'PETTY_PURCHASE_POST' in permissions %}<form method="post" action="/app/petty-purchases/{{ p.id }}/post"><button class="button primary" type="submit">Post</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="6"><div class="empty">No petty purchases found.</div></td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

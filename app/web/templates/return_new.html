@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — New Return{% endblock %}
+{% block page_title %}New Stock Return{% endblock %}
+{% block content %}
+<div class="card form-card"><form method="post" action="/app/returns/new" class="stack">
+<div class="grid cols-3"><label>Return date<input type="date" name="return_date" value="{{ selected_fy.start_date if selected_fy else '' }}" required></label><label>Financial Year<select name="financial_year_id">{% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and fy.id == selected_fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}</select></label><label>Returning Store<select name="store_id">{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select></label></div>
+<label>Original Issue<select name="original_issue_id" required>{% for issue in issues %}<option value="{{ issue.id }}">{{ issue.issue_no }} — {{ issue.issue_date }} — Store {{ issue.source_store_id }}</option>{% endfor %}</select></label>
+<div class="line-editor" id="return-lines"><div class="line-row header"><span>Original Issue Line ID</span><span>Return quantity</span><span>Asset IDs</span><span>Remarks</span><span></span></div>
+<div class="line-row return-line"><input name="original_issue_line_id" type="number" min="1"><input name="quantity" type="number" min="0.001" step="0.001"><input name="asset_ids" placeholder="Asset IDs, comma-separated"><input name="line_remarks"><button type="button" class="button" onclick="removeReturnRow(this)">Remove</button></div></div>
+<div class="grid cols-2"><label>Reason<textarea name="reason" rows="2" required></textarea></label><label>Remarks<textarea name="remarks" rows="2"></textarea></label></div>
+<div class="form-actions"><button type="button" class="button" onclick="addReturnRow()">+ Add row</button><a class="button" href="/app/returns">Cancel</a><button class="button primary" type="submit">Create return</button></div>
+</form></div>
+<script>
+function removeReturnRow(btn){const rows=document.querySelectorAll('#return-lines .return-line');if(rows.length>1)btn.closest('.return-line').remove();}
+function addReturnRow(){const first=document.querySelector('#return-lines .return-line');const c=first.cloneNode(true);c.querySelectorAll('input').forEach(i=>i.value='');document.querySelector('#return-lines').appendChild(c);}
+</script>
+{% endblock %}

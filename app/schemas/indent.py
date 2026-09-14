@@ -25,6 +25,25 @@ class IndentCreate(BaseModel):
     lines: list[IndentLineCreate] = Field(min_length=1)
 
 
+class ManualIndentLineCreate(BaseModel):
+    item_id: int
+    unit_id: int
+    requested_quantity: Decimal = Field(gt=0)
+    issued_quantity: Decimal = Field(ge=0)
+    asset_ids: list[int] | None = None
+    remarks: str | None = None
+
+
+class ManualIndentCreate(BaseModel):
+    indent_date: date
+    financial_year_id: int
+    store_id: int
+    office_id: int
+    section_id: int | None = None
+    remarks: str | None = None
+    lines: list[ManualIndentLineCreate] = Field(min_length=1)
+
+
 class IndentLineResponse(BaseModel):
     id: int
     item_id: int
@@ -61,6 +80,14 @@ class IssueFinalizeRequest(BaseModel):
     remarks: str | None = None
     lines: list[IssueFinalizeLine] = Field(min_length=1)
 
+
+
+class ManualIndentIssueResponse(BaseModel):
+    indent_id: int
+    indent_no: str
+    issue_id: int
+    issue_no: str
+    status: str
 
 class IssueLineResponse(BaseModel):
     id: int

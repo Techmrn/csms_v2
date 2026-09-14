@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Requisitions{% endblock %}
+{% block page_title %}Requisitions{% endblock %}
+{% block content %}
+<div class="admin-page-intro card"><h2>Central Store Requisition Register</h2><p class="muted">Read-only department-wide view.</p></div>
+<div class="card table-card" style="margin-top:18px"><table><thead><tr><th>No.</th><th>Date</th><th>Requesting Store</th><th>Status</th><th>Lines</th><th>Reference</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.requisition_no }}</td><td>{{ row.requisition_date }}</td><td>{{ row.requesting_store_id }}</td><td><span class="badge">{{ row.status }}</span></td><td>{{ row.lines|length }}</td><td>{{ row.reference_no or '—' }}</td></tr>{% else %}<tr><td colspan="6" class="empty">No requisitions found.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

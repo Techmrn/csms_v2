@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Master Data{% endblock %}
+{% block page_title %}Master Data{% endblock %}
+{% block content %}
+<div class="grid cols-3">
+  <a class="module card" href="/app/admin/categories"><div><strong>Categories</strong><small>CONSUMABLE and ASSET</small></div><span class="arrow">→</span></a>
+  <a class="module card" href="/app/admin/units"><div><strong>Units</strong><small>Nos, Kg, Litre, Ream, etc.</small></div><span class="arrow">→</span></a>
+  <a class="module card" href="/app/admin/items"><div><strong>Items</strong><small>Permanent master items</small></div><span class="arrow">→</span></a>
+  <a class="module card" href="/app/admin/financial-years"><div><strong>Financial Years</strong><small>FY calendar and closing</small></div><span class="arrow">→</span></a>
+  <a class="module card" href="/app/admin/policies"><div><strong>Inventory Policies</strong><small>Optional reorder, batch, expiry and FIFO/LIFO/FEFO controls</small></div><span class="arrow">→</span></a>
+  <a class="module card" href="/app/admin/offices"><div><strong>Organization</strong><small>Offices, Stores, Sections</small></div><span class="arrow">→</span></a>
+</div>
+{% endblock %}

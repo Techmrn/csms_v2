@@ -16,6 +16,8 @@ from app.models.item import Item
 from app.models.petty_purchase import PettyPurchase, PettyPurchaseLine
 from app.models.stock import StockAccount, StockMovement
 from app.models.store import Store
+from app.models.office import Office
+from app.models.section import Section
 from app.models.unit import Unit
 from app.repositories.petty_purchase import PettyPurchaseRepository
 from app.repositories.stock import StockRepository
@@ -136,9 +138,7 @@ class PettyPurchaseService:
 
             immediate = Decimal(line.immediate_issue_quantity)
             total_immediate_issue += immediate
-            if immediate > 0:
-                if indent is None:
-                    raise HTTPException(422, "An indent is required when any petty-purchase quantity is issued immediately")
+            if immediate > 0 and indent is not None:
                 indent_line = indent_lines_by_item.get(item.id)
                 if indent_line is None:
                     raise HTTPException(422, f"Immediate issue item {item.code} is not present on the linked indent")
@@ -164,12 +164,27 @@ class PettyPurchaseService:
         if total_immediate_issue <= 0 and payload.indent_id is not None:
             raise HTTPException(422, "Linked indent is allowed only when at least one line is for immediate issue")
 
+        if total_immediate_issue > 0 and indent is None:
+            if payload.issue_office_id is None:
+                raise HTTPException(422, "Destination office is required for an immediate petty-purchase issue")
+            office = await self.session.get(Office, payload.issue_office_id)
+            if office is None or not office.is_active:
+                raise HTTPException(404, "Destination office not found or inactive")
+            if payload.issue_section_id is not None:
+                section = await self.session.get(Section, payload.issue_section_id)
+                if section is None or not section.is_active:
+                    raise HTTPException(404, "Destination section not found or inactive")
+                if section.office_id != office.id:
+                    raise HTTPException(422, "Destination section does not belong to the selected office")
+
         petty_purchase = PettyPurchase(
             petty_purchase_no=await self._next_number(),
             purchase_date=payload.purchase_date,
             financial_year_id=payload.financial_year_id,
             store_id=payload.store_id,
             indent_id=payload.indent_id,
+            issue_office_id=payload.issue_office_id,
+            issue_section_id=payload.issue_section_id,
             vendor_name=payload.vendor_name,
             reference_no=payload.reference_no,
             invoice_no=payload.invoice_no,
@@ -243,6 +258,44 @@ class PettyPurchaseService:
         item_ids = sorted({line.item_id for line in purchase.lines})
         purchase_by_item = {line.item_id: line for line in purchase.lines}
         current_before_purchase: dict[int, Decimal] = {}
+
+        if purchase.indent_id is None and any(Decimal(line.immediate_issue_quantity) > 0 for line in purchase.lines):
+            if purchase.issue_office_id is None:
+                raise HTTPException(422, "Destination office is required for immediate petty-purchase issue")
+            office = await self.session.get(Office, purchase.issue_office_id)
+            if office is None or not office.is_active:
+                raise HTTPException(404, "Destination office not found or inactive")
+            section = None
+            if purchase.issue_section_id is not None:
+                section = await self.session.get(Section, purchase.issue_section_id)
+                if section is None or not section.is_active:
+                    raise HTTPException(404, "Destination section not found or inactive")
+                if section.office_id != office.id:
+                    raise HTTPException(422, "Destination section does not belong to destination office")
+            internal_lines = [
+                IndentLine(item_id=line.item_id, requested_quantity=Decimal(line.immediate_issue_quantity), remarks=line.remarks)
+                for line in purchase.lines if Decimal(line.immediate_issue_quantity) > 0
+            ]
+            from app.models.indent import Indent as IndentModel
+            indent = IndentModel(
+                indent_no=await self._next_indent_number(),
+                indent_date=purchase.purchase_date,
+                received_date=purchase.purchase_date,
+                financial_year_id=purchase.financial_year_id,
+                store_id=purchase.store_id,
+                office_id=office.id,
+                section_id=section.id if section else None,
+                request_source="PHYSICAL",
+                request_type="PETTY_PURCHASE",
+                status="RECORDED",
+                remarks=f"Internal issue document for {purchase.petty_purchase_no}",
+                created_by=purchase.created_by,
+                lines=internal_lines,
+            )
+            self.session.add(indent)
+            await self.session.flush()
+            purchase.indent_id = indent.id
+
         async with self.session.begin_nested():
             for item_id in item_ids:
                 await self.session.execute(
@@ -407,6 +460,10 @@ class PettyPurchaseService:
     async def _next_number(self) -> str:
         value = await self.session.scalar(text("SELECT nextval('petty_purchase_no_seq')"))
         return f"PP-{int(value):06d}"
+
+    async def _next_indent_number(self) -> str:
+        value = await self.session.scalar(text("SELECT nextval('indent_no_seq')"))
+        return f"IND-{int(value):06d}"
 
     async def _next_issue_number(self) -> str:
         value = await self.session.scalar(text("SELECT nextval('issue_no_seq')"))

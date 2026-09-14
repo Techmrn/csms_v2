@@ -4,6 +4,6 @@
 {% block content %}
 <div class="section-head"><div><div class="eyebrow">MASTER DATA</div><h2>Items</h2></div></div>
 <div class="card table-card"><table><thead><tr><th>Code</th><th>Item</th><th>Category</th><th>Unit</th><th>Temporary</th></tr></thead><tbody>
-{% for item in items %}<tr><td>{{ item.code }}</td><td>{{ item.name }}</td><td>{{ item.category_id }}</td><td>{{ item.unit_id }}</td><td>{% if item.is_temporary %}<span class="badge">Temporary</span>{% else %}No{% endif %}</td></tr>{% else %}<tr><td colspan="5"><div class="empty">No items found.</div></td></tr>{% endfor %}
+{% for item in items %}<tr><td>{{ item.code }}</td><td>{{ item.name }}</td><td>{{ item.category.name if item.category else "—" }}</td><td>{{ item.unit.symbol or item.unit.name if item.unit else "—" }}</td><td>{% if item.is_temporary %}<span class="badge">Temporary</span>{% else %}No{% endif %}</td></tr>{% else %}<tr><td colspan="5"><div class="empty">No items found.</div></td></tr>{% endfor %}
 </tbody></table></div>
 {% endblock %}

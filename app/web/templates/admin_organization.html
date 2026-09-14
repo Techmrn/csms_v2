@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Organization{% endblock %}
+{% block page_title %}Organization{% endblock %}
+{% block content %}
+<div class="admin-page-intro card">
+  <h2>Organization master</h2>
+  <p class="muted">Maintain the office hierarchy and the Stores and Sections attached to those offices.</p>
+</div>
+<div class="grid cols-3 admin-action-grid" style="margin-top:18px">
+  <a class="admin-action card" href="/app/admin/offices"><span class="admin-action-icon stat-blue-bg">O</span><span><strong>Offices</strong><small>Add and edit Directorate and Branch offices.</small></span><span class="arrow">→</span></a>
+  <a class="admin-action card" href="/app/admin/stores"><span class="admin-action-icon stat-green-bg">S</span><span><strong>Stores</strong><small>Add and edit Central and Branch Stores.</small></span><span class="arrow">→</span></a>
+  <a class="admin-action card" href="/app/admin/sections"><span class="admin-action-icon stat-purple-bg">§</span><span><strong>Sections</strong><small>Add and edit sections within an office.</small></span><span class="arrow">→</span></a>
+</div>
+{% endblock %}

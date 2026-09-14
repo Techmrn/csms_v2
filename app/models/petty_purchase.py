@@ -39,6 +39,15 @@ class PettyPurchase(TimestampMixin, Base):
     indent_id: Mapped[int | None] = mapped_column(
         ForeignKey("indents.id", ondelete="RESTRICT"), nullable=True
     )
+    # Destination is only used when an immediate issue is requested and no
+    # pre-existing indent is supplied. The service creates the internal indent
+    # atomically when the petty purchase is posted.
+    issue_office_id: Mapped[int | None] = mapped_column(
+        ForeignKey("offices.id", ondelete="RESTRICT"), nullable=True
+    )
+    issue_section_id: Mapped[int | None] = mapped_column(
+        ForeignKey("sections.id", ondelete="RESTRICT"), nullable=True
+    )
     vendor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     reference_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
     invoice_no: Mapped[str | None] = mapped_column(String(100), nullable=True)

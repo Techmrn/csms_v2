@@ -32,6 +32,24 @@ async def create_opening(
         raise
 
 
+@router.post("/openings/manual", response_model=OpeningStockResponse, status_code=status.HTTP_201_CREATED)
+async def create_and_post_opening(
+    payload: OpeningStockCreate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    service = StockService(session)
+    try:
+        return await service.create_and_post_opening(payload, current_user.id)
+    except HTTPException:
+        await session.rollback()
+        raise
+    except Exception:
+        await session.rollback()
+        raise
+
+
+
 @router.post("/openings/{opening_id}/post", response_model=OpeningStockResponse)
 async def post_opening(
     opening_id: int,

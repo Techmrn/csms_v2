@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Roles{% endblock %}
+{% block page_title %}Roles & Permissions{% endblock %}
+{% block content %}
+<div class="notice"><strong>Read-only.</strong> Permissions are controlled centrally by the application seed/migration. User management assigns existing roles; it does not create arbitrary privilege combinations from the UI.</div>
+<div class="grid cols-2">{% for role in roles %}<div class="card"><h2>{{ role.name }}</h2><div class="muted">{{ role.code }}</div><div class="tag-list" style="margin-top:12px">{% for p in role.permissions|sort(attribute='code') %}<span class="badge">{{ p.code }}</span>{% endfor %}</div></div>{% endfor %}</div>
+{% endblock %}

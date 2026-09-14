@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Opening Stock{% endblock %}
+{% block page_title %}Opening Stock{% endblock %}
+{% block content %}
+<div class="card form-card">
+  <div class="notice"><strong>One opening stock entry per Store and Financial Year.</strong> Add all opening items in this single entry. Consumables need only quantity. Assets require one physical-asset record per asset.</div>
+  <form method="post" action="/app/opening-stock/new" class="stack" id="opening-form">
+    <div class="grid cols-3">
+      <label>Opening Date <span class="field-help">Date on which existing physical stock is brought into CSMS.</span><input type="date" name="opening_date" value="{{ selected_fy.start_date if selected_fy else '' }}" required></label>
+      <label>Financial Year <span class="field-help">The opening balance is allowed once for each store in this financial year.</span><select id="financial_year_id" name="financial_year_id" onchange="reloadContext()">{% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and fy.id == selected_fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}</select></label>
+      <label>Store <span class="field-help">Store whose physical stock is being entered.</span><select id="store_id" name="store_id" onchange="reloadContext()">{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select></label>
+    </div>
+    <div id="opening-lines">
+      <div class="opening-line card-subtle">
+        <div class="grid cols-4">
+          <label>Item <span class="field-help">Select a master item.</span><select name="item_id" onchange="updateOpeningLine(this)" required><option value="">Select item</option>{% for item in items %}<option value="{{ item.id }}" data-unit-id="{{ item.unit_id }}" data-unit-code="{{ item.unit.code }}" data-category="{{ item.category.type }}">{{ item.code }} — {{ item.name }}{% if item.category.type == 'ASSET' %} [Asset]{% endif %}</option>{% endfor %}</select></label>
+          <label>Unit <span class="field-help">Master unit for the selected item.</span><input type="hidden" name="unit_id" class="opening-unit-id"><input class="opening-unit-code" value="—" readonly></label>
+          <label>Quantity <span class="field-help">For assets this is the number of physical assets listed below.</span><input name="quantity" class="opening-quantity" type="number" min="0.001" step="0.001" required></label>
+          <label>Remarks <span class="field-help">Optional line-specific note.</span><input name="line_remarks"></label>
+        </div>
+        <div class="asset-editor hidden">
+          <div class="asset-editor-head"><div><strong>Asset details</strong><div class="muted small">Enter each existing asset separately. Asset number is mandatory.</div></div><button type="button" class="button" onclick="addOpeningAsset(this)">+ Add asset</button></div>
+          <div class="asset-list"></div>
+        </div>
+        <button type="button" class="button danger-lite" onclick="removeOpeningRow(this)">Remove line</button>
+      </div>
+    </div>
+    <label>Remarks <span class="field-help">Optional document-level note.</span><textarea name="remarks" rows="2"></textarea></label>
+    <div class="form-actions"><button type="button" class="button" onclick="addOpeningRow()">+ Add line</button><a class="button" href="/app/opening-stock">Cancel</a><button class="button primary" type="submit">Save &amp; Post Opening Stock</button></div>
+  </form>
+</div>
+<script>
+function reloadContext(){const store=document.getElementById('store_id').value;const fy=document.getElementById('financial_year_id').value;window.location=`/app/opening-stock/new?store_id=${encodeURIComponent(store)}&financial_year_id=${encodeURIComponent(fy)}`;}
+function renumberAssetParents(){document.querySelectorAll('#opening-lines .opening-line').forEach((row,lineIndex)=>row.querySelectorAll('input[name="asset_line_index"]').forEach(i=>i.value=lineIndex));}
+function updateOpeningLine(sel){
+  const row=sel.closest('.opening-line');
+  const opt=sel.options[sel.selectedIndex];
+  row.querySelector('.opening-unit-id').value=opt.dataset.unitId||'';
+  row.querySelector('.opening-unit-code').value=opt.dataset.unitCode||'—';
+  const asset=opt.dataset.category==='ASSET';
+  row.querySelector('.asset-editor').classList.toggle('hidden',!asset);
+  if(asset){row.querySelector('.opening-quantity').readOnly=true; updateAssetQuantity(row);}else{row.querySelector('.asset-list').innerHTML='';row.querySelector('.opening-quantity').readOnly=false;}
+}
+function updateAssetQuantity(row){row.querySelector('.opening-quantity').value=row.querySelectorAll('.asset-card').length||'';}
+function addOpeningAsset(btn){
+  const row=btn.closest('.opening-line');
+  const card=document.createElement('div'); card.className='asset-card';
+  card.innerHTML=`<input type="hidden" name="asset_line_index" value="0"><div class="grid cols-4"><label>Asset No. *<span class="field-help">Existing physical asset number.</span><input name="asset_no" required></label><label>Serial No.<input name="asset_serial_no"></label><label>Make<input name="asset_make"></label><label>Model<input name="asset_model"></label><label>Purchase Date<input name="asset_purchase_date" type="date"></label><label>Purchase Reference<input name="asset_purchase_reference"></label><label>Purchase Value<input name="asset_purchase_value" type="number" min="0" step="0.01"></label><label>Warranty Expiry<input name="asset_warranty_expiry_date" type="date"></label></div><label>Remarks<input name="asset_remarks"></label><button type="button" class="button" onclick="removeOpeningAsset(this)">Remove asset</button>`;
+  row.querySelector('.asset-list').appendChild(card); renumberAssetParents(); updateAssetQuantity(row);
+}
+function removeOpeningAsset(btn){const row=btn.closest('.opening-line');btn.closest('.asset-card').remove();renumberAssetParents();updateAssetQuantity(row);}
+function removeOpeningRow(btn){const rows=document.querySelectorAll('#opening-lines .opening-line');if(rows.length>1)btn.closest('.opening-line').remove();renumberAssetParents();}
+function addOpeningRow(){const first=document.querySelector('#opening-lines .opening-line');const c=first.cloneNode(true);c.querySelectorAll('input,textarea').forEach(i=>{if(i.classList.contains('opening-unit-code'))i.value='—';else{i.value='';i.disabled=false;i.readOnly=false;}});c.querySelector('select').selectedIndex=0;c.querySelector('.asset-editor').classList.add('hidden');c.querySelector('.asset-list').innerHTML='';c.querySelector('.opening-quantity').readOnly=false;document.getElementById('opening-lines').appendChild(c);renumberAssetParents();}
+</script>
+{% endblock %}

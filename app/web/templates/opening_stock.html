@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Opening Stock{% endblock %}
+{% block page_title %}Opening Stock{% endblock %}
+{% block content %}
+<div class="context-bar">
+  <div>
+    <div class="context-title">Opening stock register</div>
+    <div class="muted">Storekeeper entry for existing consumables and assets. No controller authorization is required.</div>
+  </div>
+  {% if "STOCK_OPENING_CREATE" in permissions %}<a class="button primary" href="/app/opening-stock/new">+ Enter Opening Stock</a>{% endif %}
+</div>
+<div class="context-form">
+  <form method="get" action="/app/opening-stock" class="inline-form">
+    <label>Store
+      <select name="store_id">
+        <option value="">All visible stores</option>
+        {% for store in stores %}
+        <option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Financial Year
+      <select name="financial_year_id">
+        {% for fy in financial_years %}
+        <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>{{ fy.year_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="button" type="submit">Filter</button>
+  </form>
+</div>
+<div class="card table-card">
+<table>
+<thead><tr><th>Opening No.</th><th>Date</th><th>Store</th><th>FY</th><th>Status</th></tr></thead>
+<tbody>
+{% for opening in openings %}
+<tr>
+  <td>{{ opening.opening_no }}</td>
+  <td>{{ opening.opening_date }}</td>
+  <td>{{ (stores|selectattr("id", "equalto", opening.store_id)|first).name if (stores|selectattr("id", "equalto", opening.store_id)|first) else opening.store_id }}</td>
+  <td>{{ (financial_years|selectattr("id", "equalto", opening.financial_year_id)|first).year_name if (financial_years|selectattr("id", "equalto", opening.financial_year_id)|first) else opening.financial_year_id }}</td>
+  <td><span class="badge">{{ opening.status }}</span></td>
+</tr>
+{% else %}
+<tr><td colspan="5"><div class="empty">No opening stock records found.</div></td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endblock %}

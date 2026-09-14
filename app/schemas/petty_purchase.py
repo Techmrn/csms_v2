@@ -29,6 +29,8 @@ class PettyPurchaseCreate(BaseModel):
     financial_year_id: int
     store_id: int
     indent_id: int | None = None
+    issue_office_id: int | None = None
+    issue_section_id: int | None = None
     vendor_name: str | None = None
     reference_no: str | None = None
     invoice_no: str | None = None
@@ -64,6 +66,8 @@ class PettyPurchaseResponse(BaseModel):
     financial_year_id: int
     store_id: int
     indent_id: int | None
+    issue_office_id: int | None
+    issue_section_id: int | None
     vendor_name: str | None
     reference_no: str | None
     invoice_no: str | None

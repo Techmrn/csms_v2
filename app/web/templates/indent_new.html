@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Manual Indent{% endblock %}
+{% block page_title %}Manual Indent & Issue{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="notice">
+    <strong>Manual indent is an approved store document.</strong>
+    Saving this form creates the indent and finalizes the corresponding issue in one transaction.
+    There is no separate draft, approval, or issue-finalization step.
+  </div>
+
+  <form method="get" action="/app/indents/new" class="context-form">
+    <label>Store
+      <select name="store_id" onchange="reloadContext()" id="store_id" required>
+        {% for store in stores %}
+        <option value="{{ store.id }}" {% if selected_store and store.id == selected_store.id %}selected{% endif %}>{{ store.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Financial Year
+      <select name="financial_year_id" onchange="reloadContext()" id="financial_year_id" required>
+        {% for fy in financial_years %}
+        <option value="{{ fy.id }}" {% if selected_fy and fy.id == selected_fy.id %}selected{% endif %}>{{ fy.year_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <span class="muted context-help">Change Store/FY to refresh the Available column.</span>
+  </form>
+
+  <form method="post" action="/app/indents/new" class="stack">
+    <input type="hidden" name="store_id" value="{{ selected_store.id if selected_store else '' }}">
+    <input type="hidden" name="financial_year_id" value="{{ selected_fy.id if selected_fy else '' }}">
+
+    <div class="grid cols-3">
+      <label>Indent Date
+        <input type="date" name="indent_date" value="{{ selected_fy.start_date if selected_fy else '' }}" required>
+      </label>
+      <label>Destination Office <span class="field-help">Central Store users may select any active office; branch storekeepers are limited to their branch office.</span>
+        <select name="office_id" id="manual_office_id" required onchange="filterManualSections()">
+          {% for office in destination_offices %}
+          <option value="{{ office.id }}">{{ office.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Section <span class="field-help">Optional. Only sections belonging to the selected office are shown.</span>
+        <select name="section_id" id="manual_section_id">
+          <option value="">— Office level / none —</option>
+          {% for section in sections %}
+          <option value="{{ section.id }}" data-office-id="{{ section.office_id }}">{{ section.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <label>Remarks
+      <textarea name="remarks" rows="2"></textarea>
+    </label>
+
+    <div class="section-head">
+      <div>
+        <h2>Issue Lines</h2>
+        <div class="muted">Enter the requested quantity and the actual quantity issued now. Zero issue is allowed.</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="entry-table">
+        <thead>
+          <tr>
+            <th style="min-width:240px">Item</th>
+            <th>Unit</th>
+            <th>Requested Quantity</th>
+            <th>Available</th>
+            <th>Issued</th>
+            <th>Remarks</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="indent-lines">
+          <tr class="indent-line">
+            <td>
+              <select name="item_id" class="item-select" onchange="updateLine(this)" required>
+                <option value="">Select item</option>
+                {% for item in items %}
+                <option
+                  value="{{ item.id }}"
+                  data-unit-id="{{ item.unit_id }}"
+                  data-unit-code="{{ item.unit.code }}"
+                  data-category="{{ item.category.type }}"
+                  data-available="{{ availability.get(item.id, 0) }}"
+                >{{ item.code }} — {{ item.name }}{% if item.category.type == 'ASSET' %} [Asset]{% endif %}</option>
+                {% endfor %}
+              </select>
+              <input type="hidden" name="asset_ids" class="asset-ids">
+              <div class="asset-helper hidden">
+                Asset IDs for issue, comma separated:
+                <input type="text" class="asset-id-input" placeholder="e.g. 101,102">
+              </div>
+            </td>
+            <td>
+              <input type="hidden" name="unit_id" class="unit-id">
+              <span class="unit-code">—</span>
+            </td>
+            <td><input name="requested_quantity" class="requested-input" type="number" min="0.001" step="0.001" oninput="syncIssuedDefault(this)" required></td>
+            <td><span class="available-value">—</span></td>
+            <td><input name="issued_quantity" class="issued-input" type="number" min="0" step="0.001" value="0" required></td>
+            <td><input name="line_remarks"></td>
+            <td><button type="button" class="button" onclick="removeIndentRow(this)">Remove</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" class="button" onclick="addIndentRow()">+ Add line</button>
+      <a class="button" href="/app/indents">Cancel</a>
+      <button class="button primary" type="submit">Save Indent & Issue</button>
+    </div>
+  </form>
+</div>
+
+<script>
+function filterManualSections(){const office=document.getElementById('manual_office_id').value;document.querySelectorAll('#manual_section_id option[data-office-id]').forEach(o=>o.hidden=o.dataset.officeId!==office);const s=document.getElementById('manual_section_id');if(s.value && s.options[s.selectedIndex].hidden)s.value='';}
+function reloadContext(){
+  const store = document.getElementById('store_id').value;
+  const fy = document.getElementById('financial_year_id').value;
+  window.location = `/app/indents/new?store_id=${encodeURIComponent(store)}&financial_year_id=${encodeURIComponent(fy)}`;
+}
+function updateLine(sel){
+  const row = sel.closest('tr');
+  const opt = sel.options[sel.selectedIndex];
+  row.querySelector('.unit-id').value = opt.dataset.unitId || '';
+  row.querySelector('.unit-code').textContent = opt.dataset.unitCode || '—';
+  row.querySelector('.available-value').textContent = opt.dataset.available || '0';
+  const helper = row.querySelector('.asset-helper');
+  helper.classList.toggle('hidden', opt.dataset.category !== 'ASSET');
+  if(opt.dataset.category !== 'ASSET'){
+    row.querySelector('.asset-id-input').value = '';
+    row.querySelector('.asset-ids').value = '';
+  }
+}
+function syncIssuedDefault(input){
+  const row = input.closest('tr');
+  const issued = row.querySelector('.issued-input');
+  if(issued.dataset.manual !== '1' || !issued.value || issued.value === '0'){
+    issued.value = input.value || '0';
+  }
+}
+filterManualSections();
+document.addEventListener('input', (e) => {
+  if(e.target.classList.contains('issued-input')) e.target.dataset.manual = '1';
+  if(e.target.classList.contains('asset-id-input')){
+    e.target.closest('tr').querySelector('.asset-ids').value = e.target.value;
+  }
+});
+function removeIndentRow(btn){
+  const rows = document.querySelectorAll('#indent-lines .indent-line');
+  if(rows.length > 1) btn.closest('tr').remove();
+}
+function addIndentRow(){
+  const first = document.querySelector('#indent-lines .indent-line');
+  const clone = first.cloneNode(true);
+  clone.querySelectorAll('input').forEach(i => { i.value=''; i.dataset.manual=''; });
+  clone.querySelector('select').selectedIndex = 0;
+  clone.querySelector('.unit-code').textContent = '—';
+  clone.querySelector('.available-value').textContent = '—';
+  clone.querySelector('.asset-helper').classList.add('hidden');
+  clone.querySelector('.asset-ids').value='';
+  clone.querySelector('.issued-input').value='0';
+  document.getElementById('indent-lines').appendChild(clone);
+}
+</script>
+{% endblock %}

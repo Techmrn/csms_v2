@@ -85,7 +85,7 @@ class AssetMovement(TimestampMixin, Base):
     __tablename__ = "asset_movements"
     __table_args__ = (
         CheckConstraint(
-            "movement_type in ('RECEIPT','ASSIGNMENT','TRANSFER','RETURN','REPAIR','UNSERVICEABLE','DISPOSAL','LOST','LOCATION_CHANGE')",
+            "movement_type in ('OPENING','RECEIPT','ASSIGNMENT','TRANSFER','RETURN','REPAIR','UNSERVICEABLE','DISPOSAL','LOST','LOCATION_CHANGE')",
             name="ck_asset_movements_type_valid",
         ),
         Index("ix_asset_movements_asset_date", "asset_id", "movement_date"),

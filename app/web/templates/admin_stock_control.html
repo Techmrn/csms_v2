@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Stock Control{% endblock %}
+{% block page_title %}Stock Control{% endblock %}
+{% block content %}
+<div class="admin-page-intro card"><h2>Stock Control Register</h2><p class="muted">Read-only department-wide summary of verification, adjustment and unserviceable records.</p></div>
+<div class="grid cols-3 admin-stat-grid" style="margin-top:18px">
+  <div class="admin-stat card stat-blue"><div class="stat-label">Verifications</div><div class="stat-value">{{ counts.verifications }}</div><div class="stat-note">All statuses</div></div>
+  <div class="admin-stat card stat-orange"><div class="stat-label">Adjustments</div><div class="stat-value">{{ counts.adjustments }}</div><div class="stat-note">All statuses</div></div>
+  <div class="admin-stat card stat-red"><div class="stat-label">Unserviceable</div><div class="stat-value">{{ counts.unserviceable }}</div><div class="stat-note">All statuses</div></div>
+</div>
+<div class="card table-card" style="margin-top:18px"><table><thead><tr><th>Module</th><th>Reference</th><th>Date</th><th>Store</th><th>Status</th></tr></thead><tbody>
+{% for row in verification_rows %}<tr><td>Verification</td><td>{{ row.verification_no }}</td><td>{{ row.verification_date }}</td><td>{{ row.store_id }}</td><td><span class="badge">{{ row.status }}</span></td></tr>{% endfor %}
+{% for row in adjustment_rows %}<tr><td>Adjustment</td><td>{{ row.adjustment_no }}</td><td>{{ row.adjustment_date }}</td><td>{{ row.store_id }}</td><td><span class="badge">{{ row.status }}</span></td></tr>{% endfor %}
+{% for row in unserviceable_rows %}<tr><td>Unserviceable</td><td>{{ row.reference_no }}</td><td>{{ row.date }}</td><td>{{ row.store_id }}</td><td><span class="badge">{{ row.status }}</span></td></tr>{% endfor %}
+{% if not verification_rows and not adjustment_rows and not unserviceable_rows %}<tr><td colspan="5" class="empty">No stock control records found.</td></tr>{% endif %}
+</tbody></table></div>
+{% endblock %}

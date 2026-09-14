@@ -84,6 +84,7 @@ app/services/asset.py
 app/services/authorization.py
 app/services/indent.py
 app/services/issue.py
+app/services/master_admin.py
 app/services/office.py
 app/services/petty_purchase.py
 app/services/receipt.py
@@ -95,6 +96,7 @@ app/services/store.py
 app/services/transfer.py
 app/web/__init__.py
 app/web/auth.py
+app/web/master_routes.py
 app/web/routes.py
 csms_v2.egg-info/PKG-INFO
 csms_v2.egg-info/SOURCES.txt

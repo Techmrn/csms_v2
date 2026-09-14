@@ -11,6 +11,7 @@ from app.models.office import Office
 
 
 DEV_USERS = [
+    ("DEV-ADMIN", "dev_admin", "System Administrator (DEV)", "SYSTEM_ADMIN", "DIR", None, None),
     ("DEV-DIR", "dev_director", "Director (DEV)", "DIRECTOR", "DIR", None, None),
     ("DEV-DY", "dev_deputy", "Deputy Superintendent, Stock & Stores (DEV)", "DEPUTY_SUPDT_STORES", "DIR", "CENTRAL", None),
     ("DEV-GSK", "dev_general_sk", "General Storekeeper (DEV)", "GENERAL_STOREKEEPER", "DIR", "CENTRAL", None),

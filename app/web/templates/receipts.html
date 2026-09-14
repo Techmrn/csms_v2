@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Receipts{% endblock %}
+{% block page_title %}Receipts{% endblock %}
+{% block content %}
+<div class="notice"><strong>Receipt stock rule:</strong> Accepted quantity is posted to stock when a receipt is saved. Rejected quantity is not added to stock.</div>
+<div class="context-bar"><div class="context-title">Receipt register</div>{% if "STOCK_RECEIPT" in permissions %}<a class="button primary" href="/app/receipts/new">+ New receipt</a>{% endif %}</div>
+<div class="card table-card"><table><thead><tr><th>Receipt</th><th>Date</th><th>Store</th><th>Status</th><th>Lines</th><th>Actions</th></tr></thead><tbody>
+{% for r in receipts %}<tr><td>{{ r.receipt_no }}</td><td>{{ r.receipt_date }}</td><td>{{ (stores|selectattr("id", "equalto", r.store_id)|first).name if (stores|selectattr("id", "equalto", r.store_id)|first) else r.store_id }}</td><td><span class="badge">{{ r.status }}</span></td><td>{{ r.lines|length }}</td><td>{% if not is_system_admin %}<div class="actions">{% if r.status == 'OPEN' %}<form method="post" action="/app/receipts/{{ r.id }}/verify"><button class="button" type="submit">Verify</button></form>{% elif r.status == 'VERIFIED' %}<form method="post" action="/app/receipts/{{ r.id }}/post"><button class="button primary" type="submit">Post</button></form>{% endif %}</div>{% endif %}</td></tr>{% else %}<tr><td colspan="6"><div class="empty">No receipts found.</div></td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

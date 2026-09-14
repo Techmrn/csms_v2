@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Stores{% endblock %}
+{% block page_title %}Stores{% endblock %}
+{% block content %}
+<div class="card"><h2>Add Store</h2><form method="post" action="/app/admin/stores/new" class="grid cols-3" style="margin-top:14px">
+<label>Office<select name="office_id" required>{% for office in offices %}<option value="{{ office.id }}">{{ office.name }}</option>{% endfor %}</select></label>
+<label>Code<input name="code" required></label><label>Name<input name="name" required></label>
+<label>Store Type<select name="store_type"><option>CENTRAL</option><option>BRANCH</option><option>OTHER</option></select></label>
+<label class="check"><input type="checkbox" name="is_primary" checked> Primary</label><label>Remarks<input name="remarks"></label>
+<div><button class="button primary" type="submit">Save Store</button></div>
+</form></div>
+{% if edit_store %}<div class="card" style="margin-top:18px"><h2>Edit {{ edit_store.name }}</h2><form method="post" action="/app/admin/stores/{{ edit_store.id }}/save" class="grid cols-3">
+<label>Code<input value="{{ edit_store.code }}" disabled></label><label>Office<select name="office_id">{% for office in offices %}<option value="{{ office.id }}" {% if edit_store.office_id==office.id %}selected{% endif %}>{{ office.name }}</option>{% endfor %}</select></label>
+<label>Name<input name="name" value="{{ edit_store.name }}" required></label><label>Type<select name="store_type">{% for t in ['CENTRAL','BRANCH','OTHER'] %}<option {% if edit_store.store_type==t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+<label class="check"><input type="checkbox" name="is_primary" {% if edit_store.is_primary %}checked{% endif %}> Primary</label><label>Remarks<input name="remarks" value="{{ edit_store.remarks or '' }}"></label>
+<label class="check"><input type="checkbox" name="is_active" {% if edit_store.is_active %}checked{% endif %}> Active</label><div><button class="button primary">Update Store</button><a class="button" href="/app/admin/stores">Cancel</a></div>
+</form></div>{% endif %}
+<div class="card table-card" style="margin-top:18px"><table><thead><tr><th>Code</th><th>Store</th><th>Office</th><th>Type</th><th>Active</th><th></th></tr></thead><tbody>
+{% for store in stores %}<tr><td>{{ store.code }}</td><td>{{ store.name }}</td><td>{{ store.office.name }}</td><td>{{ store.store_type }}</td><td>{{ 'Yes' if store.is_active else 'No' }}</td><td><a class="button" href="/app/admin/stores?edit={{ store.id }}">Edit</a></td></tr>{% else %}<tr><td colspan="6" class="empty">No stores</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

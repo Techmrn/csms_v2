@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Transfers{% endblock %}
+{% block page_title %}Transfers{% endblock %}
+{% block content %}
+<div class="admin-page-intro card"><h2>Stock Transfer Register</h2><p class="muted">Read-only department-wide view.</p></div>
+<div class="card table-card" style="margin-top:18px"><table><thead><tr><th>No.</th><th>Date</th><th>Source Store</th><th>Destination Store</th><th>Status</th><th>Lines</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.transfer_no }}</td><td>{{ row.transfer_date }}</td><td>{{ row.source_store_id }}</td><td>{{ row.destination_store_id }}</td><td><span class="badge">{{ row.status }}</span></td><td>{{ row.lines|length }}</td></tr>{% else %}<tr><td colspan="6" class="empty">No transfers found.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

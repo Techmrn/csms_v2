@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — User{% endblock %}
+{% block page_title %}User Profile{% endblock %}
+{% block content %}
+<div class="grid cols-3"><div class="card"><div class="stat-label">Full Name</div><div class="stat-value" style="font-size:22px">{{ target_user.full_name }}</div></div><div class="card"><div class="stat-label">Username</div><div class="stat-value" style="font-size:22px">{{ target_user.username }}</div></div><div class="card"><div class="stat-label">Status</div><div class="stat-value" style="font-size:22px">{{ 'Active' if target_user.is_active else 'Inactive' }}</div></div></div>
+<div class="grid cols-2" style="margin-top:18px"><div class="card"><h2>Roles</h2><div class="tag-list">{% for role in target_user.roles %}<span class="badge">{{ role.name }}</span>{% endfor %}</div></div><div class="card"><h2>Assigned Stores</h2><div class="tag-list">{% for store in target_user.stores %}<span class="badge">{{ store.name }}</span>{% endfor %}</div></div></div>
+<div class="form-actions" style="margin-top:18px"><a class="button" href="/app/admin/users?edit={{ target_user.id }}">Edit User</a><a class="button" href="/app/admin/users">Back</a></div>
+{% endblock %}

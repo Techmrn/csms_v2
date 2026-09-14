@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Returns{% endblock %}
+{% block page_title %}Stock Returns{% endblock %}
+{% block content %}
+<div class="context-bar"><div class="context-title">Return register</div>{% if "STOCK_RETURN" in permissions %}<a class="button primary" href="/app/returns/new">+ New return</a>{% endif %}</div>
+<div class="card table-card"><table><thead><tr><th>Return</th><th>Date</th><th>Store</th><th>Original Issue</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+{% for r in returns %}<tr><td>{{ r.return_no }}</td><td>{{ r.return_date }}</td><td>{{ (stores|selectattr("id", "equalto", r.store_id)|first).name if (stores|selectattr("id", "equalto", r.store_id)|first) else r.store_id }}</td><td>{{ r.original_issue_id }}</td><td><span class="badge">{{ r.status }}</span></td><td>{% if not is_system_admin %}{% if r.status == 'OPEN' %}<form method="post" action="/app/returns/{{ r.id }}/verify"><button class="button" type="submit">Verify</button></form>{% elif r.status == 'VERIFIED' %}<form method="post" action="/app/returns/{{ r.id }}/post"><button class="button primary" type="submit">Post</button></form>{% endif %}{% endif %}</td></tr>{% else %}<tr><td colspan="6"><div class="empty">No returns found.</div></td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

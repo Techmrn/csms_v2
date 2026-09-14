@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — New Petty Purchase{% endblock %}
+{% block page_title %}New Petty Purchase{% endblock %}
+{% block content %}
+<div class="card form-card">
+<form method="post" action="/app/petty-purchases/new" class="stack">
+<div class="notice"><strong>Petty Purchase is for consumables.</strong> The indent field is no longer mandatory. For an immediate issue, select a destination office/section; CSMS creates the internal issue document automatically when the purchase is posted.</div>
+<div class="grid cols-3">
+<label>Date <span class="field-help">Date of the petty purchase.</span><input type="date" name="purchase_date" value="{{ selected_fy.start_date if selected_fy else '' }}" required></label>
+<label>Financial Year <span class="field-help">Financial year for stock posting.</span><select name="financial_year_id">{% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and fy.id == selected_fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}</select></label>
+<label>Store <span class="field-help">Store receiving the purchased stock.</span><select name="store_id">{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select></label>
+</div>
+<div class="grid cols-3">
+<label>Vendor <span class="field-help">Supplier/vendor name.</span><input name="vendor_name"></label>
+<label>Reference <span class="field-help">Optional purchase/reference number.</span><input name="reference_no"></label>
+<label>Invoice <span class="field-help">Optional invoice number.</span><input name="invoice_no"></label>
+</div>
+<div class="grid cols-2">
+<label>Immediate issue destination office <span class="field-help">Required only when any line has Immediate Issue &gt; 0.</span><select id="issue_office_id" name="issue_office_id" onchange="filterSections()"><option value="">No immediate issue</option>{% for office in destination_offices %}<option value="{{ office.id }}">{{ office.name }}</option>{% endfor %}</select></label>
+<label>Destination section <span class="field-help">Optional; must belong to the selected destination office.</span><select id="issue_section_id" name="issue_section_id"><option value="">Office level / no section</option>{% for section in sections %}<option value="{{ section.id }}" data-office-id="{{ section.office_id }}">{{ section.name }}</option>{% endfor %}</select></label>
+</div>
+<div class="line-editor" id="petty-lines"><div class="line-row header"><span>Item</span><span>Temporary item name</span><span>Qty</span><span>Unit</span><span>Price</span><span>Immediate issue</span><span></span></div>
+<div class="line-row petty-line"><select name="item_id"><option value="">Use temporary item</option>{% for item in items if item.category and item.category.type == 'CONSUMABLE' %}<option value="{{ item.id }}">{{ item.code }} — {{ item.name }}</option>{% endfor %}</select><input name="temporary_item_name" placeholder="Only for one-off item"><input name="quantity" type="number" min="0.001" step="0.001"><select name="unit_id">{% for unit in units %}<option value="{{ unit.id }}">{{ unit.code }}</option>{% endfor %}</select><input name="unit_price" type="number" min="0" step="0.01"><input name="immediate_issue_quantity" type="number" min="0" step="0.001" value="0"><button type="button" class="button" onclick="removePettyRow(this)">Remove</button></div></div>
+<label>Optional existing indent ID <span class="field-help">Leave blank in the normal petty-purchase workflow. Use this only when an approved indent already exists.</span><input name="indent_id" type="number" min="1"></label>
+<label>Remarks <span class="field-help">Additional purchase or issue notes.</span><textarea name="remarks" rows="2"></textarea></label>
+<div class="form-actions"><button type="button" class="button" onclick="addPettyRow()">+ Add row</button><a class="button" href="/app/petty-purchases">Cancel</a><button class="button primary" type="submit">Create petty purchase</button></div>
+</form></div>
+<script>
+function filterSections(){const office=document.getElementById('issue_office_id').value;document.querySelectorAll('#issue_section_id option[data-office-id]').forEach(o=>o.hidden=!office||o.dataset.officeId!==office);const s=document.getElementById('issue_section_id');if(s.value && s.options[s.selectedIndex].hidden)s.value='';}
+function removePettyRow(btn){const rows=document.querySelectorAll('#petty-lines .petty-line');if(rows.length>1)btn.closest('.petty-line').remove();}
+function addPettyRow(){const first=document.querySelector('#petty-lines .petty-line');const c=first.cloneNode(true);c.querySelectorAll('input').forEach(i=>i.value=(i.name==='immediate_issue_quantity')?'0':'');c.querySelectorAll('select').forEach(s=>s.selectedIndex=0);document.querySelector('#petty-lines').appendChild(c);}
+filterSections();
+</script>
+{% endblock %}

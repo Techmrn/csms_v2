@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Online Indent{% endblock %}
+{% block page_title %}New Online Indent{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="notice"><strong>Online indent.</strong> This creates a request for approval. Stock is not changed until an authorized storekeeper processes the approved indent.</div>
+  <form method="get" action="/app/online-indents/new" class="context-form">
+    <label>Store <span class="field-help">Store where the requested stock is held.</span><select name="store_id" onchange="reloadContext()" required>{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and store.id==selected_store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select></label>
+    <label>Financial Year <span class="field-help">The year in which this indent is recorded.</span><select name="financial_year_id" onchange="reloadContext()" required>{% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and fy.id==selected_fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}</select></label>
+  </form>
+  <form method="post" action="/app/online-indents/new" class="stack">
+    <input type="hidden" name="store_id" value="{{ selected_store.id if selected_store else '' }}"><input type="hidden" name="financial_year_id" value="{{ selected_fy.id if selected_fy else '' }}">
+    <div class="grid cols-3">
+      <label>Indent Date <span class="field-help">Date the request is raised.</span><input type="date" name="indent_date" value="{{ selected_fy.start_date if selected_fy else '' }}" required></label>
+      <label>Request Type <span class="field-help">Use GENERAL unless a specific business reason applies.</span><select name="request_type"><option>GENERAL</option><option>REGULAR</option><option>EMERGENCY</option></select></label>
+      <label>Reference No. <span class="field-help">Optional office letter/file/reference number.</span><input name="reference_no"></label>
+      <label>Reference Date <span class="field-help">Optional date of the referenced document.</span><input name="reference_date" type="date"></label>
+      <label>Destination Office <span class="field-help">Central Store users may select any active office; branch storekeepers stay within their office.</span><select id="office_id" name="office_id" required onchange="filterSections()">{% for office in destination_offices %}<option value="{{ office.id }}">{{ office.name }}</option>{% endfor %}</select></label>
+      <label>Section <span class="field-help">Optional; select a section belonging to the destination office.</span><select id="section_id" name="section_id"><option value="">Office level / no section</option>{% for section in sections %}<option value="{{ section.id }}" data-office-id="{{ section.office_id }}">{{ section.name }}</option>{% endfor %}</select></label>
+    </div>
+    <label>Remarks <span class="field-help">Additional context for the approving officer.</span><textarea name="remarks" rows="2"></textarea></label>
+    <div class="section-head"><div><h2>Requested Items</h2><div class="muted">Enter the requested quantity only. Issue quantity is entered later by the storekeeper.</div></div></div>
+    <div class="table-wrap"><table class="entry-table"><thead><tr><th>Item</th><th>Unit</th><th>Available</th><th>Requested Quantity</th><th>Remarks</th><th></th></tr></thead><tbody id="online-lines"><tr class="online-line"><td><select name="item_id" onchange="updateLine(this)" required><option value="">Select item</option>{% for item in items %}<option value="{{ item.id }}" data-unit-code="{{ item.unit.code }}" data-available="{{ availability.get(item.id,0) }}">{{ item.code }} — {{ item.name }}{% if item.category.type=='ASSET' %} [Asset]{% endif %}</option>{% endfor %}</select></td><td><span class="unit-code">—</span></td><td><span class="available-value">—</span></td><td><input name="requested_quantity" type="number" min="0.001" step="0.001" required></td><td><input name="line_remarks"></td><td><button type="button" class="button" onclick="removeRow(this)">Remove</button></td></tr></tbody></table></div>
+    <div class="form-actions"><button type="button" class="button" onclick="addRow()">+ Add line</button><a class="button" href="/app/online-indents">Cancel</a><button class="button primary" type="submit">Save Online Indent</button></div>
+  </form>
+</div>
+<script>
+function reloadContext(){window.location=`/app/online-indents/new?store_id=${encodeURIComponent(document.querySelector('[name=store_id]').value)}&financial_year_id=${encodeURIComponent(document.querySelector('[name=financial_year_id]').value)}`;}
+function filterSections(){const office=document.getElementById('office_id').value;document.querySelectorAll('#section_id option[data-office-id]').forEach(o=>o.hidden=o.dataset.officeId!==office);const s=document.getElementById('section_id');if(s.value && s.options[s.selectedIndex].hidden)s.value='';}
+function updateLine(sel){const opt=sel.options[sel.selectedIndex];const row=sel.closest('tr');row.querySelector('.unit-code').textContent=opt.dataset.unitCode||'—';row.querySelector('.available-value').textContent=opt.dataset.available||'0';}
+function removeRow(btn){const rows=document.querySelectorAll('#online-lines .online-line');if(rows.length>1)btn.closest('tr').remove();}
+function addRow(){const first=document.querySelector('#online-lines .online-line');const c=first.cloneNode(true);c.querySelectorAll('input').forEach(i=>i.value='');c.querySelector('select').selectedIndex=0;c.querySelector('.unit-code').textContent='—';c.querySelector('.available-value').textContent='—';document.getElementById('online-lines').appendChild(c);}
+filterSections();
+</script>
+{% endblock %}

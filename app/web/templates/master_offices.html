@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Offices{% endblock %}
+{% block page_title %}Offices{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Add Office</h2>
+  <form method="post" action="/app/admin/offices/new" class="grid cols-3" style="margin-top:14px">
+    <label>Code<input name="code" placeholder="DIR / PRESS / BRANCH01" required></label>
+    <label>Name<input name="name" required></label>
+    <label>Type<select name="office_type"><option>DIRECTORATE</option><option>BRANCH</option><option>OTHER</option></select></label>
+    <label>Parent Office<select name="parent_office_id"><option value="">— None —</option>{% for office in offices %}<option value="{{ office.id }}">{{ office.name }}</option>{% endfor %}</select></label>
+    <label>Display Order<input name="display_order" type="number"></label>
+    <label>Remarks<input name="remarks"></label>
+    <div><button class="button primary" type="submit">Save Office</button></div>
+  </form>
+</div>
+{% if edit_office %}
+<div class="card" style="margin-top:18px"><h2>Edit {{ edit_office.name }}</h2><form method="post" action="/app/admin/offices/{{ edit_office.id }}/save" class="grid cols-3" style="margin-top:14px">
+  <label>Code<input value="{{ edit_office.code }}" disabled></label>
+  <label>Name<input name="name" value="{{ edit_office.name }}" required></label>
+  <label>Type<select name="office_type">{% for t in ['DIRECTORATE','BRANCH','OTHER'] %}<option {% if edit_office.office_type==t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+  <label>Parent Office<select name="parent_office_id"><option value="">— None —</option>{% for office in offices %}<option value="{{ office.id }}" {% if edit_office.parent_office_id==office.id %}selected{% endif %}>{{ office.name }}</option>{% endfor %}</select></label>
+  <label>Display Order<input name="display_order" type="number" value="{{ edit_office.display_order or '' }}"></label>
+  <label>Remarks<input name="remarks" value="{{ edit_office.remarks or '' }}"></label>
+  <label class="check"><input type="checkbox" name="is_active" {% if edit_office.is_active %}checked{% endif %}> Active</label>
+  <div><button class="button primary" type="submit">Update Office</button><a class="button" href="/app/admin/offices">Cancel</a></div>
+</form></div>
+{% endif %}
+<div class="card table-card" style="margin-top:18px"><table><thead><tr><th>Code</th><th>Office</th><th>Type</th><th>Parent</th><th>Active</th><th></th></tr></thead><tbody>
+{% for office in offices %}<tr><td>{{ office.code }}</td><td>{{ office.name }}</td><td>{{ office.office_type }}</td><td>{{ office.parent.name if office.parent else '—' }}</td><td>{{ 'Yes' if office.is_active else 'No' }}</td><td><a class="button" href="/app/admin/offices?edit={{ office.id }}">Edit</a></td></tr>{% else %}<tr><td colspan="6" class="empty">No offices</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

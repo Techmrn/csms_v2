@@ -171,7 +171,7 @@ class AuthorizationService:
         role_codes = set((await self.session.scalars(stmt)).all())
 
         # Department-wide visibility
-        if "DIRECTOR" in role_codes or "SUPERINTENDENT" in role_codes:
+        if "SYSTEM_ADMIN" in role_codes or "DIRECTOR" in role_codes or "SUPERINTENDENT" in role_codes:
             return None
 
         visible_store_ids = set()

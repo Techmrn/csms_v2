@@ -14,6 +14,7 @@ async def set_passwords() -> None:
         raise SystemExit("Set CSMS_DEV_PASSWORD before running this development-only script.")
 
     usernames = {
+        "dev_admin",
         "dev_director",
         "dev_deputy",
         "dev_general_sk",

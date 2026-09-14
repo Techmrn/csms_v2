@@ -34,6 +34,7 @@ UNITS = [
 
 PERMISSIONS = [
     ("STOCK_VIEW", "View stock", "STOCK", "VIEW"),
+    ("STOCK_OPENING_CREATE", "Enter and post opening stock", "STOCK", "OPENING_CREATE"),
     ("STOCK_RECEIPT", "Receive stock", "STOCK", "RECEIPT"),
     ("STOCK_ISSUE", "Issue stock", "STOCK", "ISSUE"),
     ("STOCK_TRANSFER_DISPATCH", "Dispatch transfer", "STOCK", "TRANSFER_DISPATCH"),
@@ -66,19 +67,25 @@ PERMISSIONS = [
     ("PETTY_PURCHASE_CREATE", "Create petty purchase", "PETTY_PURCHASE", "CREATE"),
     ("PETTY_PURCHASE_VERIFY", "Verify petty purchase", "PETTY_PURCHASE", "VERIFY"),
     ("PETTY_PURCHASE_POST", "Post petty purchase", "PETTY_PURCHASE", "POST"),
+    ("MASTER_DATA_MANAGE", "Manage master data", "MASTER", "MANAGE"),
+    ("ORGANIZATION_MANAGE", "Manage offices, stores and sections", "ORGANIZATION", "MANAGE"),
+    ("USER_MANAGE", "Manage users, roles and store assignments", "USER", "MANAGE"),
 ]
 
 ROLE_PERMISSIONS = {
-    "SYSTEM_ADMIN": [p[0] for p in PERMISSIONS],
+    "SYSTEM_ADMIN": [
+        "STOCK_VIEW", "ASSET_VIEW", "REPORT_VIEW", "AUDIT_VIEW",
+        "MASTER_DATA_MANAGE", "ORGANIZATION_MANAGE", "USER_MANAGE",
+    ],
     "DIRECTOR": ["STOCK_VIEW", "REPORT_VIEW", "AUDIT_VIEW", "ASSET_VIEW"],
     "DEPUTY_SUPDT_STORES": [
         "STOCK_VIEW", "STOCK_VERIFY", "STOCK_ADJUST_AUTHORIZE",
-        "STOCK_UNSERVICEABLE_AUTHORIZE", "STOCK_TRANSFER_DISCREPANCY_RESOLVE", "REQUISITION_APPROVE_CENTRAL",
+        "STOCK_UNSERVICEABLE_AUTHORIZE", "STOCK_TRANSFER_DISCREPANCY_RESOLVE", "REQUISITION_APPROVE_CENTRAL", "INDENT_APPROVE",
         "REPORT_VIEW", "AUDIT_VIEW", "ASSET_VIEW", "PETTY_PURCHASE_VERIFY",
         "ASSET_REPAIR", "ASSET_REPAIR_RETURN", "ASSET_UNSERVICEABLE", "ASSET_DISPOSE", "ASSET_LOST",
     ],
     "GENERAL_STOREKEEPER": [
-        "STOCK_VIEW", "STOCK_RECEIPT", "STOCK_ISSUE",
+        "STOCK_VIEW", "STOCK_OPENING_CREATE", "STOCK_RECEIPT", "STOCK_ISSUE",
         "STOCK_TRANSFER_DISPATCH", "STOCK_RETURN", "INDENT_PROCESS",
         "REQUISITION_CREATE", "ASSET_VIEW", "ASSET_CREATE", "PETTY_PURCHASE_CREATE", "PETTY_PURCHASE_POST",
         "ASSET_REPAIR", "ASSET_REPAIR_RETURN",
@@ -86,7 +93,7 @@ ROLE_PERMISSIONS = {
         "STOCK_UNSERVICEABLE_CREATE", "STOCK_UNSERVICEABLE_POST",
     ],
     "ASSISTANT_STOREKEEPER": [
-        "STOCK_VIEW", "STOCK_RECEIPT", "STOCK_ISSUE",
+        "STOCK_VIEW", "STOCK_OPENING_CREATE", "STOCK_RECEIPT", "STOCK_ISSUE",
         "STOCK_TRANSFER_DISPATCH", "STOCK_RETURN", "INDENT_PROCESS",
         "REQUISITION_CREATE", "ASSET_VIEW", "ASSET_CREATE", "PETTY_PURCHASE_CREATE", "PETTY_PURCHASE_POST",
         "ASSET_REPAIR", "ASSET_REPAIR_RETURN",
@@ -100,7 +107,7 @@ ROLE_PERMISSIONS = {
         "ASSET_UNSERVICEABLE", "ASSET_DISPOSE", "ASSET_LOST",
     ],
     "BRANCH_STOREKEEPER": [
-        "STOCK_VIEW", "STOCK_RECEIPT", "STOCK_ISSUE",
+        "STOCK_VIEW", "STOCK_OPENING_CREATE", "STOCK_RECEIPT", "STOCK_ISSUE",
         "STOCK_TRANSFER_RECEIVE", "STOCK_RETURN", "INDENT_PROCESS",
         "INDENT_CREATE", "REQUISITION_CREATE", "ASSET_VIEW", "ASSET_CREATE",
         "PETTY_PURCHASE_CREATE", "PETTY_PURCHASE_POST",
@@ -145,6 +152,9 @@ async def seed() -> None:
         permissions_by_code = {permission.code: permission for permission in (await session.scalars(select(Permission))).all()}
         for role_code, permission_codes in ROLE_PERMISSIONS.items():
             role = roles_by_code[role_code]
+            if role_code == "SYSTEM_ADMIN":
+                role.permissions = [permissions_by_code[code] for code in permission_codes if code in permissions_by_code]
+                continue
             existing = {permission.code for permission in role.permissions}
             for permission_code in permission_codes:
                 if permission_code in permissions_by_code and permission_code not in existing:

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — {{ indent.indent_no }}{% endblock %}
+{% block page_title %}{{ indent.indent_no }}{% endblock %}
+{% block content %}
+<div class="grid cols-3">
+  <div class="card"><div class="stat-label">Document</div><div class="stat-value">{{ indent.indent_no }}</div></div>
+  <div class="card"><div class="stat-label">Status</div><div class="stat-value">{{ indent.status }}</div></div>
+  <div class="card"><div class="stat-label">Issue</div><div class="stat-value">{{ issue.issue_no if issue else '—' }}</div></div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <div class="section-head">
+    <div>
+      <h2>Issued Lines</h2>
+      <div class="muted">{% if indent.request_source == 'ONLINE' %}Online indents are approved first and issued by an authorized storekeeper.{% else %}Manual indents are finalized when saved.{% endif %}</div>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Item</th><th>Requested</th><th>Issued</th><th>Current Available</th><th>Remarks</th></tr></thead>
+      <tbody>
+      {% for line in indent.lines %}
+      <tr>
+        <td>{{ line.item.code if line.item else line.item_id }} — {{ line.item.name if line.item else '' }}</td>
+        <td>{{ line.requested_quantity }}</td>
+        <td>{{ line.issued_quantity if line.issued_quantity is not none else 0 }}</td>
+        <td>{{ available.get(line.id, 0) }}</td>
+        <td>{{ line.remarks or '—' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="form-actions" style="margin-top:16px">
+    {% if indent.request_source == 'ONLINE' and indent.status == 'PROCESSING' and 'INDENT_PROCESS' in permissions and not issue %}<a class="button primary" href="/app/indents/{{ indent.id }}?edit_issue=1">Process / Issue</a>{% endif %}
+    <a class="button" href="{{ '/app/online-indents' if indent.request_source == 'ONLINE' else '/app/indents' }}">Back</a>
+  </div>
+  {% if indent.request_source == 'ONLINE' and indent.status == 'PROCESSING' and 'INDENT_PROCESS' in permissions and not issue and request.query_params.get('edit_issue') %}
+  <div class="card" style="margin-top:18px"><h2>Issue Online Indent</h2><div class="notice">Enter the actual quantity issued now. Zero or partial quantities are allowed.</div><form method="post" action="/app/indents/{{ indent.id }}/issue" class="stack"><div class="table-wrap"><table class="entry-table"><thead><tr><th>Item</th><th>Requested</th><th>Issued</th><th>Remarks</th></tr></thead><tbody>{% for line in indent.lines %}<tr><td>{{ line.item.code if line.item else line.item_id }} — {{ line.item.name if line.item else '' }}<input type="hidden" name="indent_line_id" value="{{ line.id }}"></td><td>{{ line.requested_quantity }}</td><td><input name="issued_quantity" type="number" min="0" max="{{ line.requested_quantity }}" step="0.001" value="0" required></td><td><input name="issue_line_remarks"></td></tr>{% endfor %}</tbody></table></div><div class="form-actions"><a class="button" href="/app/indents/{{ indent.id }}">Cancel</a><button class="button primary">Post Issue</button></div></form></div>{% endif %}
+</div>
+{% endblock %}
