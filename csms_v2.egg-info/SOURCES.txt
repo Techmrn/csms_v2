@@ -79,6 +79,7 @@ app/schemas/transfer.py
 app/schemas/unit.py
 app/security/__init__.py
 app/security/auth.py
+app/security/permissions.py
 app/services/__init__.py
 app/services/asset.py
 app/services/authorization.py
@@ -86,8 +87,10 @@ app/services/indent.py
 app/services/issue.py
 app/services/master_admin.py
 app/services/office.py
+app/services/pdf_reports.py
 app/services/petty_purchase.py
 app/services/receipt.py
+app/services/registers.py
 app/services/requisition.py
 app/services/stock.py
 app/services/stock_control.py
@@ -109,6 +112,7 @@ tests/test_asset_phase2.py
 tests/test_auth_integration.py
 tests/test_imports.py
 tests/test_petty_purchase_imports.py
+tests/test_rbac_matrix.py
 tests/test_receipt_return_imports.py
 tests/test_stock_imports.py
 tests/test_web_ui.py

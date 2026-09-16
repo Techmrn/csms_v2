@@ -93,7 +93,7 @@ async def test_asset_phase2_issue_duplicate_and_return(client, dev_tokens):
     )
     assert issue.status_code == 200, issue.text
     issue_json = issue.json()
-    assert issue_json["lines"][0]["quantity"] == 2
+    assert Decimal(str(issue_json["lines"][0]["quantity"])) == 2
     issue_id = issue_json["id"]
 
     # Cannot reuse an already-assigned asset.

@@ -98,6 +98,15 @@ class AuthorizationService:
             raise HTTPException(403, "User is inactive or not found")
         return user
 
+    async def scoped_store_ids(self, user_id: int, store_id: int | None = None) -> list[int] | None:
+        """Return stores visible to the user, validating an optional requested store."""
+        visible = await self.get_visible_stores(user_id)
+        if store_id is not None:
+            if visible is not None and store_id not in visible:
+                raise HTTPException(403, "User is not authorized to access this store")
+            return [store_id]
+        return visible
+
     async def require_asset_visibility(self, user_id: int, asset) -> User:
         """Require view/access to an individual asset by store or office scope."""
         user = await self.session.get(User, user_id)
@@ -110,7 +119,7 @@ class AuthorizationService:
             .where(user_roles.c.user_id == user_id, Role.is_active.is_(True))
         )
         role_codes = set((await self.session.scalars(role_stmt)).all())
-        if "DIRECTOR" in role_codes or "SUPERINTENDENT" in role_codes:
+        if "SYSTEM_ADMIN" in role_codes or "DIRECTOR" in role_codes:
             return user
 
         current_store_id = getattr(asset, "current_store_id", None)
@@ -171,7 +180,7 @@ class AuthorizationService:
         role_codes = set((await self.session.scalars(stmt)).all())
 
         # Department-wide visibility
-        if "SYSTEM_ADMIN" in role_codes or "DIRECTOR" in role_codes or "SUPERINTENDENT" in role_codes:
+        if "SYSTEM_ADMIN" in role_codes or "DIRECTOR" in role_codes:
             return None
 
         visible_store_ids = set()

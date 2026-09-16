@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Registers{% endblock %}
+{% block page_title %}Registers{% endblock %}
+{% block content %}
+<div class="context-bar">
+  <div class="context-title">Operational registers</div>
+  <form method="get" action="/app/registers" class="context-form">
+    <select name="store_id">
+      <option value="">All visible stores</option>
+      {% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}
+    </select>
+    <select name="financial_year_id">
+      <option value="">All financial years</option>
+      {% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}
+    </select>
+    <button class="button" type="submit">Apply</button>
+  </form>
+</div>
+
+<div class="grid grid-3">
+  <a class="card" href="/app/registers/issues{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Issue Register</strong><div class="muted">All posted issues, destinations and source indents.</div></a>
+  <a class="card" href="/app/registers/distribution{% if selected_store or selected_fy %}?{% if selected_store %}store_id={{ selected_store.id }}{% endif %}{% if selected_store and selected_fy %}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}"><strong>Distribution Register</strong><div class="muted">Item-wise distribution derived from Issue lines.</div></a>
+  <a class="card" href="/app/registers/transactions{% if selected_store or selected_fy %}?{% if selected_store %}store_id={{ selected_store.id }}{% endif %}{% if selected_store and selected_fy %}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}"><strong>Transaction Register</strong><div class="muted">Unified stock movement history with source documents.</div></a>
+  <a class="card" href="/app/registers/item-stock{% if selected_store or selected_fy %}?{% if selected_store %}store_id={{ selected_store.id }}{% endif %}{% if selected_store and selected_fy %}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}"><strong>Item Stock Register</strong><div class="muted">Item-wise running ledger from StockMovement.</div></a>
+  <a class="card" href="/app/assets{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Asset Register</strong><div class="muted">Individual asset custody and lifecycle records.</div></a>
+  <a class="card" href="/app/registers/computers{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Computer Register</strong><div class="muted">Computer-related assets as a filtered Asset Register view.</div></a>
+  <a class="card" href="/app/registers/e-waste{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>E-Waste Register</strong><div class="muted">Assets in the current unserviceable/disposal lifecycle.</div></a>
+  <a class="card" href="/app/opening-stock{% if selected_store or selected_fy %}?{% if selected_store %}store_id={{ selected_store.id }}{% endif %}{% if selected_store and selected_fy %}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}"><strong>Opening Stock Register</strong><div class="muted">Opening-stock documents by store and financial year.</div></a>
+  <a class="card" href="/app/receipts{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Goods Receipt Register</strong><div class="muted">Receipt documents and posting status.</div></a>
+  <a class="card" href="/app/returns{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Return Register</strong><div class="muted">Returns linked to original Issues.</div></a>
+  <a class="card" href="/app/transfers{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Transfer Register</strong><div class="muted">Inter-store transfer documents and receipt status.</div></a>
+  <a class="card" href="/app/petty-purchases{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Petty Purchase Register</strong><div class="muted">Temporary and normal consumable acquisitions.</div></a>
+</div>
+{% endblock %}

@@ -6,6 +6,7 @@ from app.security.auth import get_current_user
 from app.models.user import User
 from app.schemas.office import OfficeCreate, OfficeResponse
 from app.services.office import OfficeService
+from app.services.authorization import AuthorizationService
 
 router = APIRouter(prefix="/offices", tags=["offices"])
 
@@ -17,9 +18,10 @@ async def list_offices(session: AsyncSession = Depends(get_db_session)):
 
 @router.post("", response_model=OfficeResponse, status_code=status.HTTP_201_CREATED)
 async def create_office(payload: OfficeCreate, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+    await AuthorizationService(session).require_permission(current_user.id, "ORGANIZATION_MANAGE")
     service = OfficeService(session)
     try:
-        office = await service.create_office(payload)
+        office = await service.create_office(payload, current_user.id)
         await session.commit()
         await session.refresh(office)
         return office

@@ -1,0 +1,324 @@
+POST /api/assets/{asset_id}/dispose -> dispose_asset (app\api\routes\assets.py:75)
+   Route perms: []
+   Service calls: [('AssetService', 'dispose')]
+
+POST /api/assets/{asset_id}/lost -> lost_asset (app\api\routes\assets.py:84)
+   Route perms: []
+   Service calls: [('AssetService', 'lost')]
+
+POST /api/assets/{asset_id}/repair -> repair_asset (app\api\routes\assets.py:48)
+   Route perms: []
+   Service calls: [('AssetService', 'repair')]
+
+POST /api/assets/{asset_id}/repair-return -> repair_return_asset (app\api\routes\assets.py:57)
+   Route perms: []
+   Service calls: [('AssetService', 'repair_return')]
+
+POST /api/assets/{asset_id}/unserviceable -> unserviceable_asset (app\api\routes\assets.py:66)
+   Route perms: []
+   Service calls: [('AssetService', 'unserviceable')]
+
+POST /api/auth/token -> login (app\api\routes\auth.py:17)
+   Route perms: []
+   Service calls: []
+
+POST /api/indents -> create_indent (app\api\routes\indents.py:14)
+   Route perms: []
+   Service calls: [('IndentService', 'create')]
+
+POST /api/indents/manual -> create_manual_indent (app\api\routes\indents.py:19)
+   Route perms: []
+   Service calls: [('IndentService', 'create_manual_and_issue')]
+
+POST /api/indents/{indent_id}/finalize-issue -> finalize_issue (app\api\routes\indents.py:54)
+   Route perms: []
+   Service calls: [('IssueService', 'finalize_from_indent')]
+
+POST /api/masters/categories -> create_category (app\api\routes\masters.py:45)
+   Route perms: []
+   Service calls: []
+
+POST /api/masters/financial-years -> create_financial_year (app\api\routes\masters.py:26)
+   Route perms: []
+   Service calls: []
+
+POST /api/masters/items -> create_item (app\api\routes\masters.py:75)
+   Route perms: []
+   Service calls: []
+
+POST /api/masters/units -> create_unit (app\api\routes\masters.py:60)
+   Route perms: []
+   Service calls: []
+
+POST /api/offices -> create_office (app\api\routes\offices.py:18)
+   Route perms: []
+   Service calls: []
+
+POST /api/petty-purchases -> create_petty_purchase (app\api\routes\petty_purchases.py:18)
+   Route perms: []
+   Service calls: [('PettyPurchaseService', 'create')]
+
+POST /api/petty-purchases/{petty_purchase_id}/post -> post_petty_purchase (app\api\routes\petty_purchases.py:54)
+   Route perms: []
+   Service calls: [('PettyPurchaseService', 'post')]
+
+POST /api/petty-purchases/{petty_purchase_id}/verify -> verify_petty_purchase (app\api\routes\petty_purchases.py:44)
+   Route perms: []
+   Service calls: [('PettyPurchaseService', 'verify')]
+
+POST /api/receipts -> create_receipt (app\api\routes\receipts.py:13)
+   Route perms: []
+   Service calls: [('ReceiptService', 'create')]
+
+POST /api/receipts/{receipt_id}/post -> post_receipt (app\api\routes\receipts.py:42)
+   Route perms: []
+   Service calls: [('ReceiptService', 'post')]
+
+POST /api/receipts/{receipt_id}/verify -> verify_receipt (app\api\routes\receipts.py:37)
+   Route perms: []
+   Service calls: [('ReceiptService', 'verify')]
+
+POST /api/requisitions -> create_requisition (app\api\routes\requisitions.py:18)
+   Route perms: []
+   Service calls: [('RequisitionService', 'create')]
+
+POST /api/requisitions/{requisition_id}/approve-branch -> approve_branch (app\api\routes\requisitions.py:37)
+   Route perms: []
+   Service calls: [('RequisitionService', 'approve_branch')]
+
+POST /api/requisitions/{requisition_id}/approve-central -> approve_central (app\api\routes\requisitions.py:57)
+   Route perms: []
+   Service calls: [('RequisitionService', 'approve_central')]
+
+POST /api/requisitions/{requisition_id}/reject-branch -> reject_branch (app\api\routes\requisitions.py:47)
+   Route perms: []
+   Service calls: [('RequisitionService', 'reject_branch')]
+
+POST /api/returns -> create_return (app\api\routes\returns.py:13)
+   Route perms: []
+   Service calls: [('StockReturnService', 'create')]
+
+POST /api/returns/{return_id}/post -> post_return (app\api\routes\returns.py:42)
+   Route perms: []
+   Service calls: [('StockReturnService', 'post')]
+
+POST /api/returns/{return_id}/verify -> verify_return (app\api\routes\returns.py:37)
+   Route perms: []
+   Service calls: [('StockReturnService', 'verify')]
+
+POST /api/stock/adjustments/from-verification -> create_adjustment_from_verification (app\api\routes\stock_control.py:60)
+   Route perms: []
+   Service calls: [('AdjustmentService', 'create_from_verification')]
+
+POST /api/stock/adjustments/{adjustment_id}/authorize -> authorize_adjustment (app\api\routes\stock_control.py:83)
+   Route perms: []
+   Service calls: [('AdjustmentService', 'authorize')]
+
+POST /api/stock/adjustments/{adjustment_id}/post -> post_adjustment (app\api\routes\stock_control.py:93)
+   Route perms: []
+   Service calls: [('AdjustmentService', 'post')]
+
+POST /api/stock/openings -> create_opening (app\api\routes\stock.py:15)
+   Route perms: []
+   Service calls: []
+
+POST /api/stock/openings/manual -> create_and_post_opening (app\api\routes\stock.py:35)
+   Route perms: []
+   Service calls: []
+
+POST /api/stock/openings/{opening_id}/post -> post_opening (app\api\routes\stock.py:53)
+   Route perms: []
+   Service calls: []
+
+POST /api/stock/unserviceable -> create_unserviceable (app\api\routes\stock_control.py:103)
+   Route perms: []
+   Service calls: [('UnserviceableService', 'create')]
+
+POST /api/stock/unserviceable/{record_id}/authorize -> authorize_unserviceable (app\api\routes\stock_control.py:136)
+   Route perms: []
+   Service calls: [('UnserviceableService', 'authorize')]
+
+POST /api/stock/unserviceable/{record_id}/post -> post_unserviceable (app\api\routes\stock_control.py:146)
+   Route perms: []
+   Service calls: [('UnserviceableService', 'post')]
+
+POST /api/stock/unserviceable/{record_id}/verify -> verify_unserviceable (app\api\routes\stock_control.py:126)
+   Route perms: []
+   Service calls: [('UnserviceableService', 'verify')]
+
+POST /api/stock/verifications -> create_verification (app\api\routes\stock_control.py:27)
+   Route perms: []
+   Service calls: [('StockVerificationService', 'create')]
+
+POST /api/stock/verifications/{verification_id}/authorize -> authorize_verification (app\api\routes\stock_control.py:50)
+   Route perms: []
+   Service calls: [('StockVerificationService', 'authorize')]
+
+POST /api/stores -> create_store (app\api\routes\stores.py:18)
+   Route perms: []
+   Service calls: []
+
+POST /api/transfers/discrepancies/{discrepancy_id}/resolve -> resolve_discrepancy (app\api\routes\transfers.py:53)
+   Route perms: []
+   Service calls: [('TransferService', 'resolve_discrepancy')]
+
+POST /api/transfers/requisitions/{requisition_id}/dispatch -> dispatch_transfer (app\api\routes\transfers.py:33)
+   Route perms: []
+   Service calls: [('TransferService', 'dispatch')]
+
+POST /api/transfers/{transfer_id}/receive -> receive_transfer (app\api\routes\transfers.py:43)
+   Route perms: []
+   Service calls: [('TransferService', 'receive')]
+
+POST /app/admin/categories/new -> create_category_web (app\web\master_routes.py:351)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'create_category')]
+
+POST /app/admin/categories/{category_id}/save -> update_category_web (app\web\master_routes.py:362)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'update_category')]
+
+POST /app/admin/financial-years/new -> create_financial_year_web (app\web\master_routes.py:440)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'create_financial_year')]
+
+POST /app/admin/financial-years/{fy_id}/save -> update_financial_year_web (app\web\master_routes.py:450)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'update_financial_year')]
+
+POST /app/admin/items/new -> create_item_web (app\web\master_routes.py:411)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'create_item')]
+
+POST /app/admin/items/{item_id}/save -> update_item_web (app\web\master_routes.py:421)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'update_item')]
+
+POST /app/admin/offices/new -> create_office_web (app\web\master_routes.py:167)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'create_office')]
+
+POST /app/admin/offices/{office_id}/save -> update_office_web (app\web\master_routes.py:195)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'update_office')]
+
+POST /app/admin/policies/new -> create_policy_web (app\web\master_routes.py:469)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'create_inventory_policy')]
+
+POST /app/admin/policies/{policy_id}/save -> update_policy_web (app\web\master_routes.py:492)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'update_inventory_policy')]
+
+POST /app/admin/sections/new -> create_section_web (app\web\master_routes.py:309)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'create_section')]
+
+POST /app/admin/sections/{section_id}/save -> update_section_web (app\web\master_routes.py:325)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'update_section')]
+
+POST /app/admin/stores/new -> create_store_web (app\web\master_routes.py:241)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'create_store')]
+
+POST /app/admin/stores/{store_id}/save -> update_store_web (app\web\master_routes.py:267)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'update_store')]
+
+POST /app/admin/units/new -> create_unit_web (app\web\master_routes.py:382)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'create_unit')]
+
+POST /app/admin/units/{unit_id}/save -> update_unit_web (app\web\master_routes.py:392)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'update_unit')]
+
+POST /app/admin/users/new -> create_user_web (app\web\master_routes.py:533)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'create_user')]
+
+POST /app/admin/users/{user_id}/save -> update_user_web (app\web\master_routes.py:550)
+   Route perms: []
+   Service calls: [('MasterAdminService', 'update_user')]
+
+POST /app/indents/new -> create_indent_web (app\web\routes.py:696)
+   Route perms: []
+   Service calls: [('IndentService', 'create_manual_and_issue')]
+
+POST /app/indents/{indent_id}/approve -> approve_online_indent_web (app\web\routes.py:604)
+   Route perms: ['INDENT_APPROVE']
+   Service calls: [('AuthorizationService', 'require_permission'), ('AuthorizationService', 'require_store_controller')]
+
+POST /app/indents/{indent_id}/issue -> issue_online_indent_web (app\web\routes.py:779)
+   Route perms: ['INDENT_PROCESS']
+   Service calls: [('AuthorizationService', 'require_permission'), ('IssueService', 'finalize_from_indent')]
+
+POST /app/online-indents/new -> create_online_indent_web (app\web\routes.py:575)
+   Route perms: ['INDENT_CREATE']
+   Service calls: [('AuthorizationService', 'require_permission'), ('IndentService', 'create')]
+
+POST /app/opening-stock/new -> create_opening_stock_web (app\web\routes.py:397)
+   Route perms: []
+   Service calls: [('StockService', 'create_and_post_opening')]
+
+POST /app/petty-purchases/new -> create_petty_purchase_web (app\web\routes.py:1108)
+   Route perms: []
+   Service calls: [('PettyPurchaseService', 'create')]
+
+POST /app/petty-purchases/{purchase_id}/post -> post_petty_web (app\web\routes.py:1148)
+   Route perms: []
+   Service calls: [('PettyPurchaseService', 'post')]
+
+POST /app/petty-purchases/{purchase_id}/verify -> verify_petty_web (app\web\routes.py:1139)
+   Route perms: []
+   Service calls: [('PettyPurchaseService', 'verify')]
+
+POST /app/receipts/new -> create_receipt_web (app\web\routes.py:881)
+   Route perms: []
+   Service calls: []
+
+POST /app/receipts/{receipt_id}/post -> post_receipt_web (app\web\routes.py:961)
+   Route perms: []
+   Service calls: [('ReceiptService', 'post')]
+
+POST /app/receipts/{receipt_id}/verify -> verify_receipt_web (app\web\routes.py:952)
+   Route perms: []
+   Service calls: [('ReceiptService', 'verify')]
+
+POST /app/requisitions/new -> create_requisition_web (app\web\routes.py:998)
+   Route perms: []
+   Service calls: [('RequisitionService', 'create')]
+
+POST /app/requisitions/{requisition_id}/approve-branch -> approve_requisition_branch_web (app\web\routes.py:1014)
+   Route perms: []
+   Service calls: [('RequisitionService', 'approve_branch')]
+
+POST /app/requisitions/{requisition_id}/approve-central -> approve_requisition_central_web (app\web\routes.py:1024)
+   Route perms: []
+   Service calls: [('RequisitionService', 'approve_central')]
+
+POST /app/requisitions/{requisition_id}/dispatch -> dispatch_requisition_web (app\web\routes.py:1037)
+   Route perms: []
+   Service calls: [('TransferService', 'dispatch')]
+
+POST /app/returns/new -> create_return_web (app\web\routes.py:1346)
+   Route perms: []
+   Service calls: [('StockReturnService', 'create')]
+
+POST /app/returns/{return_id}/post -> post_return_web (app\web\routes.py:1374)
+   Route perms: []
+   Service calls: [('StockReturnService', 'post')]
+
+POST /app/returns/{return_id}/verify -> verify_return_web (app\web\routes.py:1365)
+   Route perms: []
+   Service calls: [('StockReturnService', 'verify')]
+
+POST /app/transfers/{transfer_id}/receive -> receive_transfer_web (app\web\routes.py:1066)
+   Route perms: []
+   Service calls: [('TransferService', 'receive')]
+
+POST /login -> login_submit (app\web\routes.py:269)
+   Route perms: []
+   Service calls: []
+

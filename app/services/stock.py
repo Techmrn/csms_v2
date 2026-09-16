@@ -366,6 +366,9 @@ class StockService:
     async def current_balance(self, store_id: int, financial_year_id: int, item_id: int):
         return await self.repository.current_balance(store_id, financial_year_id, item_id)
 
+    async def all_item_balances(self, store_id: int, financial_year_id: int, search: str | None = None):
+        return await self.repository.all_item_balances(store_id, financial_year_id, search)
+
     async def stock_register(
         self,
         store_id: int,

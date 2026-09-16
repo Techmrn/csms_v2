@@ -6,6 +6,7 @@ from app.security.auth import get_current_user
 from app.models.user import User
 from app.schemas.store import StoreCreate, StoreResponse
 from app.services.store import StoreService
+from app.services.authorization import AuthorizationService
 
 router = APIRouter(prefix="/stores", tags=["stores"])
 
@@ -17,12 +18,13 @@ async def list_stores(session: AsyncSession = Depends(get_db_session)):
 
 @router.post("", response_model=StoreResponse, status_code=status.HTTP_201_CREATED)
 async def create_store(payload: StoreCreate, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
+    await AuthorizationService(session).require_permission(current_user.id, "ORGANIZATION_MANAGE")
     service = StoreService(session)
     try:
         office = await session.get(__import__("app.models.office", fromlist=["Office"]).Office, payload.office_id)
         if office is None:
             raise HTTPException(status_code=404, detail="Office not found")
-        store = await service.create_store(payload)
+        store = await service.create_store(payload, current_user.id)
         await session.commit()
         await session.refresh(store)
         return store

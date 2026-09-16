@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Outward Pass{% endblock %}
+{% block page_title %}Outward Pass{% endblock %}
+{% block content %}
+<div class="card">
+<h2>Outward Pass</h2>
+<p><strong>Pass Reference:</strong> {{ issue.issue_no }} &nbsp; <strong>Date:</strong> {{ issue.issue_date }}</p>
+<p><strong>From:</strong> {{ store.name if store else issue.source_store_id }} &nbsp; <strong>To:</strong> {{ office.name if office else issue.destination_office_id }}{% if section %} / {{ section.name }}{% endif %}</p>
+<p><strong>Indent:</strong> {{ issue.indent_id }}{% if issue.reference_no %} &nbsp; <strong>Reference:</strong> {{ issue.reference_no }}{% endif %}</p>
+<table><thead><tr><th>Item</th><th>Unit</th><th>Quantity</th></tr></thead><tbody>{% for line in issue.lines %}<tr><td>{{ line.item.code if line.item else line.item_id }} — {{ line.item.name if line.item else '' }}</td><td>{{ line.unit.code if line.unit else line.unit_id }}</td><td>{{ line.quantity }}</td></tr>{% endfor %}</tbody></table>
+<div class="context-bar"><a class="button" href="/app/outward-pass/{{ issue.id }}.pdf">Download PDF</a><a class="button" href="/app/registers/issues">Back to Issue Register</a></div>
+</div>
+{% endblock %}

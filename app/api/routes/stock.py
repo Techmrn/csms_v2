@@ -8,6 +8,7 @@ from app.security.auth import get_current_user
 from app.models.user import User
 from app.schemas.stock import OpeningStockCreate, OpeningStockResponse, StockBalanceResponse, StockRegisterRow
 from app.services.stock import StockService
+from app.services.authorization import AuthorizationService
 
 router = APIRouter(prefix="/stock", tags=["stock"])
 
@@ -75,6 +76,9 @@ async def current_stock(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "STOCK_VIEW")
+    await auth.require_store_visibility(current_user.id, store_id)
     rows = await StockService(session).current_stock(store_id, financial_year_id, item_id)
     return [
         StockBalanceResponse(
@@ -100,6 +104,9 @@ async def stock_register(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "REGISTER_VIEW")
+    await auth.require_store_visibility(current_user.id, store_id)
     rows = await StockService(session).stock_register(
         store_id, financial_year_id, item_id, from_date, to_date
     )

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — {{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="context-bar">
+  <div class="context-title">{{ subtitle }}</div>
+  <form method="get" action="{{ request.url.path }}" class="context-form">
+    <select name="store_id"><option value="">All visible stores</option>{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select>
+    <button class="button" type="submit">Apply</button>
+  </form>
+</div>
+<div class="card table-card"><table><thead><tr><th>Asset No.</th><th>Item</th><th>Serial</th><th>Status</th><th>Store</th><th>Office</th><th>Section</th></tr></thead><tbody>
+{% for asset in assets %}<tr><td>{{ asset.asset_no }}</td><td>{{ asset.item.code if asset.item else asset.item_id }}{% if asset.item %} — {{ asset.item.name }}{% endif %}</td><td>{{ asset.serial_no or '—' }}</td><td><span class="badge">{{ asset.status }}</span></td><td>{{ asset.current_store_id or '—' }}</td><td>{{ asset.current_office_id or '—' }}</td><td>{{ asset.current_section_id or '—' }}</td></tr>{% else %}<tr><td colspan="7" class="empty">No assets found for this register.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

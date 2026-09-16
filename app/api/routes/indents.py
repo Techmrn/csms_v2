@@ -7,6 +7,7 @@ from app.models.user import User
 from app.schemas.indent import IndentCreate, IndentResponse, IssueFinalizeRequest, IssueResponse, ManualIndentCreate, ManualIndentIssueResponse
 from app.services.indent import IndentService
 from app.services.issue import IssueService
+from app.services.authorization import AuthorizationService
 
 router = APIRouter(prefix="/indents", tags=["indents"])
 
@@ -41,14 +42,33 @@ async def create_manual_indent(
 async def list_indents(
     store_id: int | None = None,
     status: str | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await IndentService(session).list(store_id, status)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "INDENT_VIEW")
+    scoped = await auth.scoped_store_ids(current_user.id, store_id)
+    service = IndentService(session)
+    if scoped is None:
+        return await service.list(None, status)
+    rows = []
+    for sid in scoped:
+        rows.extend(await service.list(sid, status))
+    return rows
 
 
 @router.get("/{indent_id}", response_model=IndentResponse)
 async def get_indent(indent_id: int, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
     return await IndentService(session).get(indent_id)
+
+
+@router.post("/{indent_id}/approve", response_model=IndentResponse)
+async def approve_online_indent(
+    indent_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    return await IndentService(session).approve_online(indent_id, current_user.id)
 
 
 @router.post("/{indent_id}/finalize-issue", response_model=IssueResponse)

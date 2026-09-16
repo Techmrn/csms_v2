@@ -6,6 +6,7 @@ from app.security.auth import get_current_user
 from app.models.user import User
 from app.schemas.receipt import ReceiptCreate, ReceiptResponse
 from app.services.receipt import ReceiptService
+from app.services.authorization import AuthorizationService
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
@@ -26,7 +27,16 @@ async def list_receipts(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await ReceiptService(session).list(store_id, status)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "STOCK_RECEIPT_VIEW")
+    scoped = await auth.scoped_store_ids(current_user.id, store_id)
+    service = ReceiptService(session)
+    if scoped is None:
+        return await service.list(None, status)
+    rows = []
+    for sid in scoped:
+        rows.extend(await service.list(sid, status))
+    return rows
 
 
 @router.get("/{receipt_id}", response_model=ReceiptResponse)

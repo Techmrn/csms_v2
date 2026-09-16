@@ -18,14 +18,17 @@ from app.models.asset import Asset, AssetMovement
 from app.models.unit import Unit
 from app.repositories.stock import StockRepository
 from app.schemas.indent import IssueFinalizeRequest
+from app.services.authorization import AuthorizationService
 
 
 class IssueService:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.stock = StockRepository(session)
+        self.auth = AuthorizationService(session)
 
     async def finalize_from_indent(self, indent_id: int, payload: IssueFinalizeRequest, actor_id: int) -> Issue:
+        await self.auth.require_permission(actor_id, "STOCK_ISSUE")
         result = await self.session.execute(
             select(Indent)
             .options(selectinload(Indent.lines))
@@ -35,6 +38,7 @@ class IssueService:
         indent = result.scalar_one_or_none()
         if indent is None:
             raise HTTPException(404, "Indent not found")
+        await self.auth.require_store_assignment(actor_id, indent.store_id)
         if indent.status not in {"RECORDED", "PROCESSING"}:
             raise HTTPException(409, f"Indent is {indent.status} and cannot be finalized")
 

@@ -12,6 +12,8 @@ class OfficeService:
     async def list_offices(self) -> list[Office]:
         return await self.repository.list()
 
-    async def create_office(self, data: OfficeCreate) -> Office:
+    async def create_office(self, data: OfficeCreate, actor_id: int) -> Office:
+        from app.services.authorization import AuthorizationService
+        await AuthorizationService(self.repository.session).require_permission(actor_id, "ORGANIZATION_MANAGE")
         office = Office(**data.model_dump())
         return await self.repository.create(office)

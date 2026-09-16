@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — {{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="context-bar">
+  <div class="context-title">{{ subtitle }}</div>
+  <form method="get" action="{{ request.url.path }}" class="context-form">
+    <select name="store_id"><option value="">All visible stores</option>{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select>
+    <select name="financial_year_id"><option value="">All financial years</option>{% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}</select>
+    <input name="search" value="{{ search }}" placeholder="Search register" aria-label="Search register">
+    <select name="page_size"><option value="25" {% if page_size==25 %}selected{% endif %}>25</option><option value="50" {% if page_size==50 %}selected{% endif %}>50</option><option value="100" {% if page_size==100 %}selected{% endif %}>100</option></select>
+    <button class="button" type="submit">Apply</button>
+    <a class="button" href="{{ request.url.path }}.pdf?{% if selected_store %}store_id={{ selected_store.id }}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}&{% endif %}search={{ search|urlencode }}">Download PDF</a>
+  </form>
+</div>
+<div class="card table-card">
+{% if kind == 'issues' %}<table><thead><tr><th>Issue</th><th>Date</th><th>FY</th><th>Source Store</th><th>Destination</th><th>Indent</th><th>Status</th></tr></thead><tbody>{% for r in rows %}<tr><td>{{ r.issue_no }}</td><td>{{ r.issue_date }}</td><td>{{ r.financial_year_id }}</td><td>{{ r.store_name }}</td><td>{{ r.office_name }}{% if r.section_name %} / {{ r.section_name }}{% endif %}</td><td><a href="/app/indents/{{ r.indent_id }}">{{ r.indent_no }}</a></td><td><span class="badge">{{ r.status }}</span> {% if kind == "issues" and r.status == "FINALIZED" %}<a href="/app/outward-pass/{{ r.id }}">Pass</a>{% endif %}</td></tr>{% else %}<tr><td colspan="7" class="empty">No issue records found.</td></tr>{% endfor %}</tbody></table>
+{% elif kind == 'distribution' %}<table><thead><tr><th>Date</th><th>Issue</th><th>Destination</th><th>Item</th><th>Unit</th><th class="num">Quantity</th><th>Indent</th></tr></thead><tbody>{% for r in rows %}<tr><td>{{ r.issue_date }}</td><td>{{ r.issue_no }}</td><td>{{ r.office_name }}{% if r.section_name %} / {{ r.section_name }}{% endif %}</td><td>{{ r.item_code }} — {{ r.item_name }}</td><td>{{ r.unit_code }}</td><td class="num">{{ r.quantity }}</td><td>{{ r.indent_no }}</td></tr>{% else %}<tr><td colspan="7" class="empty">No distribution records found.</td></tr>{% endfor %}</tbody></table>
+{% else %}<table><thead><tr><th>Date</th><th>Movement</th><th>Store</th><th>Item</th><th>In</th><th>Out</th><th>Source</th><th>Document</th></tr></thead><tbody>{% for r in rows %}<tr><td>{{ r.movement_date }}</td><td>{{ r.movement_type }}</td><td>{{ r.store_name }}</td><td>{{ r.item_code }} — {{ r.item_name }}</td><td class="num">{{ r.quantity_in }}</td><td class="num">{{ r.quantity_out }}</td><td>{{ r.reference_type }}</td><td>{{ r.reference_no or r.reference_id }}</td></tr>{% else %}<tr><td colspan="8" class="empty">No transaction records found.</td></tr>{% endfor %}</tbody></table>{% endif %}
+</div>
+{% if total %}<div class="context-bar"><span class="muted">{{ total }} records</span><span class="muted">Page {{ page }} of {{ pages }}</span><div>{% if page > 1 %}<a class="button" href="?store_id={{ selected_store.id if selected_store else '' }}&financial_year_id={{ selected_fy.id if selected_fy else '' }}&search={{ search|urlencode }}&page={{ page-1 }}&page_size={{ page_size }}">Previous</a>{% endif %} {% if page < pages %}<a class="button" href="?store_id={{ selected_store.id if selected_store else '' }}&financial_year_id={{ selected_fy.id if selected_fy else '' }}&search={{ search|urlencode }}&page={{ page+1 }}&page_size={{ page_size }}">Next</a>{% endif %}</div></div>{% endif %}
+{% endblock %}

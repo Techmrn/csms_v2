@@ -38,12 +38,21 @@ class IndentService:
         section_id: int | None,
         actor_id: int,
         permission: str,
+        request_source: str | None = None,
     ) -> tuple[FinancialYear, Store, Office, Section | None]:
         from app.services.authorization import AuthorizationService
 
         auth = AuthorizationService(self.session)
         await auth.require_permission(actor_id, permission)
-        await auth.require_store_assignment(actor_id, store_id)
+        if request_source == "PHYSICAL":
+            await auth.require_store_assignment(actor_id, store_id)
+        elif request_source == "ONLINE":
+            from app.models.user import User
+            actor = await self.session.get(User, actor_id)
+            if actor is None or actor.office_id != office_id:
+                raise HTTPException(403, "User cannot create an online indent for another office")
+            if actor.section_id is None or section_id != actor.section_id:
+                raise HTTPException(403, "User can create an online indent only for their assigned section")
 
         fy = await self.session.get(FinancialYear, financial_year_id)
         store = await self.session.get(Store, store_id)
@@ -101,6 +110,7 @@ class IndentService:
             section_id=section_id,
             actor_id=actor_id,
             permission=permission,
+            request_source=request_source,
         )
 
         seen: set[int] = set()
@@ -190,6 +200,7 @@ class IndentService:
             section_id=payload.section_id,
             actor_id=actor_id,
             permission="INDENT_PROCESS",
+            request_source="PHYSICAL",
         )
 
         line_specs = []
@@ -257,6 +268,23 @@ class IndentService:
             actor_id,
         )
         return indent, issue
+
+    async def approve_online(self, indent_id: int, actor_id: int) -> Indent:
+        from app.services.authorization import AuthorizationService
+        auth = AuthorizationService(self.session)
+        await auth.require_permission(actor_id, "INDENT_APPROVE")
+        indent = await self.session.scalar(select(Indent).where(Indent.id == indent_id, Indent.request_source == "ONLINE").with_for_update())
+        if indent is None:
+            raise HTTPException(404, "Online indent not found")
+        if indent.status != "RECORDED":
+            raise HTTPException(409, f"Indent is {indent.status} and cannot be approved")
+        if indent.created_by == actor_id:
+            raise HTTPException(403, "The indent creator cannot approve the same indent")
+        await auth.require_store_controller(actor_id, indent.store_id)
+        indent.status = "PROCESSING"
+        await self.session.commit()
+        await self.session.refresh(indent)
+        return indent
 
     async def get(self, indent_id: int) -> Indent:
         indent = await self.repository.get(indent_id)

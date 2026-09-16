@@ -11,6 +11,7 @@ from app.schemas.petty_purchase import (
     PettyPurchaseVerifyRequest,
 )
 from app.services.petty_purchase import PettyPurchaseService
+from app.services.authorization import AuthorizationService
 
 router = APIRouter(prefix="/petty-purchases", tags=["petty-purchases"])
 
@@ -30,15 +31,28 @@ async def list_petty_purchases(
     status: str | None = None,
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await PettyPurchaseService(session).list(store_id, status)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "PETTY_PURCHASE_VIEW")
+    scoped = await auth.scoped_store_ids(current_user.id, store_id)
+    service = PettyPurchaseService(session)
+    if scoped is None:
+        return await service.list(None, status)
+    rows = []
+    for sid in scoped:
+        rows.extend(await service.list(sid, status))
+    return rows
 
 
 @router.get("/{petty_purchase_id}", response_model=PettyPurchaseResponse)
 async def get_petty_purchase(
     petty_purchase_id: int,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await PettyPurchaseService(session).get(petty_purchase_id)
+    await AuthorizationService(session).require_permission(current_user.id, "PETTY_PURCHASE_VIEW")
+    purchase = await PettyPurchaseService(session).get(petty_purchase_id)
+    await AuthorizationService(session).require_store_visibility(current_user.id, purchase.store_id)
+    return purchase
 
 
 @router.post("/{petty_purchase_id}/verify", response_model=PettyPurchaseResponse)

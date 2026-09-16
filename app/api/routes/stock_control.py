@@ -17,6 +17,7 @@ from app.schemas.stock_control import (
     UnserviceableResponse,
 )
 from app.services.stock_control import AdjustmentService, StockVerificationService, UnserviceableService
+from app.services.authorization import AuthorizationService
 
 
 verification_router = APIRouter(prefix="/stock/verifications", tags=["stock-verification"])
@@ -37,9 +38,19 @@ async def create_verification(
 async def list_verifications(
     store_id: int | None = None,
     status_value: str | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await StockVerificationService(session).list(store_id, status_value)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "STOCK_VIEW")
+    scoped = await auth.scoped_store_ids(current_user.id, store_id)
+    service = StockVerificationService(session)
+    if scoped is None:
+        return await service.list(None, status_value)
+    rows = []
+    for sid in scoped:
+        rows.extend(await service.list(sid, status_value))
+    return rows
 
 
 @verification_router.get("/{verification_id}", response_model=StockVerificationResponse)
@@ -70,9 +81,19 @@ async def create_adjustment_from_verification(
 async def list_adjustments(
     store_id: int | None = None,
     status_value: str | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await AdjustmentService(session).list(store_id, status_value)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "STOCK_VIEW")
+    scoped = await auth.scoped_store_ids(current_user.id, store_id)
+    service = AdjustmentService(session)
+    if scoped is None:
+        return await service.list(None, status_value)
+    rows = []
+    for sid in scoped:
+        rows.extend(await service.list(sid, status_value))
+    return rows
 
 
 @adjustment_router.get("/{adjustment_id}", response_model=AdjustmentResponse)
@@ -113,9 +134,19 @@ async def create_unserviceable(
 async def list_unserviceable(
     store_id: int | None = None,
     status_value: str | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await UnserviceableService(session).list(store_id, status_value)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "STOCK_VIEW")
+    scoped = await auth.scoped_store_ids(current_user.id, store_id)
+    service = UnserviceableService(session)
+    if scoped is None:
+        return await service.list(None, status_value)
+    rows = []
+    for sid in scoped:
+        rows.extend(await service.list(sid, status_value))
+    return rows
 
 
 @unserviceable_router.get("/{record_id}", response_model=UnserviceableResponse)

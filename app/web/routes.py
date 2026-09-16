@@ -9,7 +9,7 @@ from typing import Annotated
 from pydantic import ValidationError
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy.exc import IntegrityError
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -58,7 +58,9 @@ from app.services.requisition import RequisitionService
 from app.services.transfer import TransferService
 from app.services.stock import StockService
 from app.services.stock_return import StockReturnService
+from app.services.registers import RegisterService
 from app.web.auth import get_web_current_user
+from app.services.pdf_reports import make_register_pdf
 
 WEB_ROOT = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(WEB_ROOT / "templates"))
@@ -68,18 +70,18 @@ MENU = [
     ("Dashboard", "/app", None),
     ("Stock", "/app/stock", "STOCK_VIEW"),
     ("Opening Stock", "/app/opening-stock", "STOCK_OPENING_CREATE"),
-    ("Items", "/app/items", "STOCK_VIEW"),
+    ("Items", "/app/items", "MASTER_DATA_MANAGE"),
     ("Assets", "/app/assets", "ASSET_VIEW"),
-    ("Online Indents", "/app/online-indents", "INDENT_CREATE"),
+    ("Online Indents", "/app/online-indents", "INDENT_VIEW"),
     ("Manual Indents", "/app/indents", "INDENT_PROCESS"),
-    ("Requisitions", "/app/requisitions", "REQUISITION_CREATE"),
-    ("Transfers", "/app/transfers", "STOCK_TRANSFER_RECEIVE"),
-    ("Receipts", "/app/receipts", "STOCK_RECEIPT"),
-    ("Returns", "/app/returns", "STOCK_RETURN"),
-    ("Petty Purchase", "/app/petty-purchases", "PETTY_PURCHASE_CREATE"),
-    ("Administration", "/app/admin", "MASTER_DATA_MANAGE"),
+    ("Requisitions", "/app/requisitions", "REQUISITION_VIEW"),
+    ("Transfers", "/app/transfers", "STOCK_TRANSFER_VIEW"),
+    ("Receipts", "/app/receipts", "STOCK_RECEIPT_VIEW"),
+    ("Returns", "/app/returns", "STOCK_RETURN_VIEW"),
+    ("Petty Purchase", "/app/petty-purchases", "PETTY_PURCHASE_VIEW"),
+    ("Registers", "/app/registers", "REGISTER_VIEW"),
+    ("Administration", "/app/admin", None),
 ]
-
 
 def role_label(user: User) -> str:
     active_roles = [r.code for r in user.roles if r.is_active]
@@ -101,41 +103,34 @@ def is_system_admin(user: User) -> bool:
 
 
 ADMIN_MENU = [
-    ("Administration", "/app/admin"),
-    ("Master Data", "/app/admin/masters"),
-    ("Organization", "/app/admin/organization"),
-    ("Users", "/app/admin/users"),
-    ("Roles & Permissions", "/app/admin/roles"),
-    ("All Views", "/app/admin/views"),
+    ("Administration", "/app/admin", {"MASTER_DATA_MANAGE", "ORGANIZATION_MANAGE", "USER_MANAGE"}),
+    ("Master Data", "/app/admin/masters", {"MASTER_DATA_MANAGE"}),
+    ("Organization", "/app/admin/organization", {"ORGANIZATION_MANAGE"}),
+    ("Users", "/app/admin/users", {"USER_MANAGE"}),
+    ("Roles & Permissions", "/app/admin/roles", {"USER_MANAGE"}),
+    ("All Views", "/app/admin/views", {"USER_MANAGE"}),
 ]
 
 
 def visible_menu(user: User) -> list[dict[str, str | None]]:
-    if is_system_admin(user):
-        return [{"label": label, "href": href} for label, href in ADMIN_MENU]
-
     perms = permission_codes(user)
-    roles = {role.code for role in user.roles if role.is_active}
     menu = []
     for label, href, permission in MENU:
-        if permission is None or permission in perms:
+        if label == "Dashboard":
             menu.append({"label": label, "href": href})
             continue
-        if label == "Online Indents" and ("INDENT_PROCESS" in perms or "INDENT_CREATE" in perms or "INDENT_APPROVE" in perms):
-            menu.append({"label": "Online Indents", "href": "/app/online-indents"})
+        if label == "Administration":
+            admin_permissions = {"MASTER_DATA_MANAGE", "ORGANIZATION_MANAGE", "USER_MANAGE"}
+            if perms.intersection(admin_permissions):
+                menu.append({"label": label, "href": href})
             continue
-        if label == "Transfers" and roles.intersection({"GENERAL_STOREKEEPER", "ASSISTANT_STOREKEEPER", "BRANCH_STOREKEEPER", "BRANCH_HEAD", "DEPUTY_SUPDT_STORES"}):
-            menu.append({"label": "Transfers", "href": "/app/transfers"})
-            continue
-        if label == "Requisitions" and roles.intersection({"BRANCH_HEAD", "GENERAL_STOREKEEPER", "ASSISTANT_STOREKEEPER", "BRANCH_STOREKEEPER", "DEPUTY_SUPDT_STORES"}):
-            menu.append({"label": "Requisitions", "href": "/app/requisitions"})
-            continue
-        if label == "Petty Purchase" and roles.intersection({"BRANCH_HEAD", "DEPUTY_SUPDT_STORES"}):
-            menu.append({"label": "Petty Purchase", "href": "/app/petty-purchases"})
-            continue
-        if label == "Opening Stock" and roles.intersection({
-            "GENERAL_STOREKEEPER", "ASSISTANT_STOREKEEPER", "BRANCH_STOREKEEPER"
-        }):
+        if permission and permission in perms:
+            menu.append({"label": label, "href": href})
+
+    # Administration has its own permission-scoped submenu.  Do not expose
+    # links the current role cannot actually open.
+    for label, href, required_permissions in ADMIN_MENU[1:]:
+        if perms.intersection(required_permissions):
             menu.append({"label": label, "href": href})
     return menu
 
@@ -162,6 +157,15 @@ async def load_store_context(
     stmt = select(Store).where(Store.is_active.is_(True)).order_by(Store.name)
     if visible is not None:
         stmt = stmt.where(Store.id.in_(visible)) if visible else stmt.where(Store.id == -1)
+    elif any(role.is_active and role.code == "SECTION_USER" for role in user.roles):
+        # Section users are not storekeepers and therefore normally have no
+        # user_stores assignment. They still need a source store for an online
+        # indent. Expose the Central Store plus their own branch store only.
+        central = select(Store.id).where(Store.store_type == "CENTRAL", Store.is_active.is_(True))
+        stmt = select(Store).where(
+            Store.is_active.is_(True),
+            (Store.id.in_(central) | (Store.office_id == user.office_id)),
+        ).order_by(Store.name)
     stores = list((await session.scalars(stmt)).all())
     fys = list((await session.scalars(select(FinancialYear).order_by(FinancialYear.start_date.desc()))).all())
 
@@ -198,16 +202,12 @@ def redirect_with_success(path: str, message: str) -> RedirectResponse:
 
 
 async def require_view_permission(session: AsyncSession, user_id: int, permission_code: str) -> None:
-    user = await session.get(User, user_id)
-    if user is None or not user.is_active:
-        raise HTTPException(403, "User is inactive or not found")
-    roles = await session.scalars(
-        select(Role.code)
-        .join(user_roles, user_roles.c.role_id == Role.id)
-        .where(user_roles.c.user_id == user_id, Role.is_active.is_(True))
-    )
-    if "SYSTEM_ADMIN" in set(roles.all()):
-        return
+    """Enforce the same explicit view permission used by the navigation matrix.
+
+    System administration does not implicitly grant business-view permissions;
+    SYSTEM_ADMIN receives only the view permissions explicitly listed in the
+    centralized role matrix.
+    """
     await AuthorizationService(session).require_permission(user_id, permission_code)
 
 
@@ -500,10 +500,10 @@ async def create_opening_stock_web(
 @router.get("/app/stock", include_in_schema=False)
 async def stock_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
+    await require_view_permission(session, current_user.id, "STOCK_VIEW")
     stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
     rows = []
     if selected_store and selected_fy:
-        await require_view_permission(session, current_user.id, "STOCK_VIEW")
         await AuthorizationService(session).require_store_visibility(current_user.id, selected_store.id)
         rows = await StockService(session).current_stock(selected_store.id, selected_fy.id, None)
     return render(request, "stock.html", current_user, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, rows=rows)
@@ -512,7 +512,7 @@ async def stock_page(request: Request, current_user: User | RedirectResponse = D
 @router.get("/app/items", include_in_schema=False)
 async def items_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    await require_view_permission(session, current_user.id, "STOCK_VIEW")
+    await require_view_permission(session, current_user.id, "MASTER_DATA_MANAGE")
     items = list((await session.scalars(select(Item).options(selectinload(Item.category), selectinload(Item.unit)).where(Item.is_active.is_(True)).order_by(Item.name))).all())
     return render(request, "items.html", current_user, items=items)
 
@@ -545,9 +545,7 @@ async def online_indents_page(
 ):
     if isinstance(current_user, RedirectResponse):
         return current_user
-    perms = permission_codes(current_user)
-    if "INDENT_CREATE" not in perms and "INDENT_PROCESS" not in perms and "INDENT_APPROVE" not in perms:
-        raise HTTPException(403, "User lacks indent access")
+    await require_view_permission(session, current_user.id, "INDENT_VIEW")
     visible = await AuthorizationService(session).get_visible_stores(current_user.id)
     stmt = select(Indent).options(selectinload(Indent.lines).selectinload(IndentLine.item)).where(Indent.request_source == "ONLINE")
     if visible is not None:
@@ -574,8 +572,6 @@ async def new_online_indent_page(
         return current_user
     await AuthorizationService(session).require_permission(current_user.id, "INDENT_CREATE")
     stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
-    if selected_store:
-        await AuthorizationService(session).require_store_assignment(current_user.id, selected_store.id)
     items = list((await session.scalars(select(Item).options(selectinload(Item.category), selectinload(Item.unit)).where(Item.is_active.is_(True)).order_by(Item.name))).all())
     destination_offices = await permitted_destination_offices(session, current_user, selected_store)
     sections = await sections_for_offices(session, destination_offices)
@@ -617,15 +613,7 @@ async def approve_online_indent_web(indent_id: int, request: Request, current_us
     if isinstance(current_user, RedirectResponse):
         return current_user
     try:
-        await AuthorizationService(session).require_permission(current_user.id, "INDENT_APPROVE")
-        indent = await session.scalar(select(Indent).where(Indent.id == indent_id, Indent.request_source == "ONLINE").with_for_update())
-        if indent is None:
-            raise HTTPException(404, "Online indent not found")
-        if indent.status != "RECORDED":
-            raise HTTPException(409, f"Indent is {indent.status} and cannot be approved")
-        await AuthorizationService(session).require_store_controller(current_user.id, indent.store_id)
-        indent.status = "PROCESSING"
-        await session.commit()
+        indent = await IndentService(session).approve_online(indent_id, current_user.id)
         return redirect_with_success(f"/app/indents/{indent_id}", f"Indent {indent.indent_no} approved for processing.")
     except HTTPException as exc:
         await session.rollback()
@@ -635,7 +623,7 @@ async def approve_online_indent_web(indent_id: int, request: Request, current_us
 @router.get("/app/indents", include_in_schema=False)
 async def indents_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, status: str | None = None, session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    await require_view_permission(session, current_user.id, "INDENT_PROCESS")
+    await require_view_permission(session, current_user.id, "INDENT_VIEW")
     stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, None)
     visible = await AuthorizationService(session).get_visible_stores(current_user.id)
     stmt = select(Indent).options(selectinload(Indent.lines))
@@ -822,7 +810,7 @@ async def indent_detail_page(
     if isinstance(current_user, RedirectResponse):
         return current_user
 
-    await require_view_permission(session, current_user.id, "INDENT_PROCESS")
+    await require_view_permission(session, current_user.id, "INDENT_VIEW")
 
     indent = (
         await session.execute(
@@ -865,7 +853,7 @@ async def indent_detail_page(
 @router.get("/app/receipts", include_in_schema=False)
 async def receipts_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, status: str | None = None, session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    await require_view_permission(session, current_user.id, "STOCK_RECEIPT")
+    await require_view_permission(session, current_user.id, "STOCK_RECEIPT_VIEW")
     visible = await AuthorizationService(session).get_visible_stores(current_user.id)
     stmt = select(Receipt).options(selectinload(Receipt.lines))
     if visible is not None: stmt = stmt.where(Receipt.store_id.in_(visible))
@@ -982,7 +970,7 @@ async def post_receipt_web(receipt_id: int, current_user: User | RedirectRespons
 async def requisitions_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), status: str | None = None, session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
     perms = permission_codes(current_user)
-    allowed = {"REQUISITION_CREATE", "REQUISITION_APPROVE_BRANCH", "REQUISITION_APPROVE_CENTRAL", "STOCK_TRANSFER_DISPATCH"}
+    allowed = {"REQUISITION_VIEW", "REQUISITION_CREATE", "REQUISITION_APPROVE_BRANCH", "REQUISITION_APPROVE_CENTRAL", "STOCK_TRANSFER_DISPATCH"}
     if not perms.intersection(allowed): raise HTTPException(403, "User lacks requisition access")
     visible = await AuthorizationService(session).get_visible_stores(current_user.id)
     stmt = select(CentralStoreRequisition).options(selectinload(CentralStoreRequisition.lines).selectinload(CentralStoreRequisitionLine.item)).order_by(CentralStoreRequisition.requisition_date.desc(), CentralStoreRequisition.id.desc())
@@ -1061,7 +1049,7 @@ async def dispatch_requisition_web(requisition_id: int, request: Request, curren
 @router.get("/app/transfers", include_in_schema=False)
 async def transfers_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), status: str | None = None, session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    await require_view_permission(session, current_user.id, "STOCK_VIEW")
+    await require_view_permission(session, current_user.id, "STOCK_TRANSFER_VIEW")
     visible = await AuthorizationService(session).get_visible_stores(current_user.id)
     all_rows = []
     if visible is None:
@@ -1090,7 +1078,7 @@ async def receive_transfer_web(transfer_id: int, request: Request, current_user:
 @router.get("/app/petty-purchases", include_in_schema=False)
 async def petty_purchases_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, status: str | None = None, session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    await require_view_permission(session, current_user.id, "PETTY_PURCHASE_CREATE")
+    await require_view_permission(session, current_user.id, "PETTY_PURCHASE_VIEW")
     visible = await AuthorizationService(session).get_visible_stores(current_user.id)
     stmt = select(PettyPurchase).options(selectinload(PettyPurchase.lines))
     if visible is not None: stmt = stmt.where(PettyPurchase.store_id.in_(visible))
@@ -1165,10 +1153,170 @@ async def post_petty_web(purchase_id: int, current_user: User | RedirectResponse
     except HTTPException as exc: return redirect_with_error("/app/petty-purchases", exc.detail)
 
 
+def page_window(total: int, page: int, page_size: int) -> tuple[int, int, int, int]:
+    page_size = max(10, min(page_size, 200))
+    pages = max(1, (total + page_size - 1) // page_size)
+    page = max(1, min(page, pages))
+    return page, page_size, pages, (page - 1) * page_size
+
+
+def pdf_response(title: str, columns: list[tuple[str, str]], rows: list[dict], subtitle: str = ""):
+    pdf = make_register_pdf(title, columns, rows, subtitle)
+    filename = title.lower().replace(" ", "_").replace("/", "-") + ".pdf"
+    return StreamingResponse(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/app/registers", include_in_schema=False)
+async def registers_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    await require_view_permission(session, current_user.id, "REGISTER_VIEW")
+    stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
+    return render(request, "registers.html", current_user, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy)
+
+
+@router.get("/app/registers/item-stock", include_in_schema=False)
+async def item_stock_register_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, page: int = 1, page_size: int = 50, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    await require_view_permission(session, current_user.id, "REGISTER_VIEW")
+    stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
+    rows = []
+    if selected_store and selected_fy:
+        await AuthorizationService(session).require_store_visibility(current_user.id, selected_store.id)
+        raw = await StockService(session).all_item_balances(selected_store.id, selected_fy.id, search)
+        total = len(raw); page, page_size, pages, offset = page_window(total, page, page_size)
+        rows = [dict(r._mapping) for r in raw[offset:offset + page_size]]
+    else:
+        total = 0; pages = 1; offset = 0
+    return render(request, "item_stock_register.html", current_user, rows=rows, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, search=search or "", page=page, page_size=page_size, pages=pages, total=total)
+
+
+@router.get("/app/registers/issues", include_in_schema=False)
+async def issue_register_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, page: int = 1, page_size: int = 50, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    await require_view_permission(session, current_user.id, "REGISTER_VIEW")
+    stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
+    raw = await RegisterService(session).issue_register(current_user.id, store_id, financial_year_id, search=search)
+    total=len(raw); page,page_size,pages,offset=page_window(total,page,page_size); rows=raw[offset:offset+page_size]
+    return render(request, "register_list.html", current_user, title="Issue Register", subtitle="Posted issues derived from Issue documents", kind="issues", rows=rows, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, search=search or "", page=page, page_size=page_size, pages=pages, total=total)
+
+
+@router.get("/app/registers/distribution", include_in_schema=False)
+async def distribution_register_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, page: int = 1, page_size: int = 50, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    await require_view_permission(session, current_user.id, "REGISTER_VIEW")
+    stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
+    raw=await RegisterService(session).distribution_register(current_user.id,store_id,financial_year_id,search=search); total=len(raw); page,page_size,pages,offset=page_window(total,page,page_size); rows=raw[offset:offset+page_size]
+    return render(request,"register_list.html",current_user,title="Distribution Register",subtitle="Distribution derived from finalized Issues",kind="distribution",rows=rows,stores=stores,financial_years=fys,selected_store=selected_store,selected_fy=selected_fy,search=search or "",page=page,page_size=page_size,pages=pages,total=total)
+
+
+@router.get("/app/registers/transactions", include_in_schema=False)
+async def transaction_register_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, page: int = 1, page_size: int = 50, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    await require_view_permission(session,current_user.id,"REGISTER_VIEW"); stores,fys,selected_store,selected_fy=await load_store_context(current_user,session,store_id,financial_year_id)
+    raw=await RegisterService(session).transaction_register(current_user.id,store_id,financial_year_id,search=search); total=len(raw); page,page_size,pages,offset=page_window(total,page,page_size); rows=raw[offset:offset+page_size]
+    return render(request,"register_list.html",current_user,title="Transaction Register",subtitle="Unified source-document-linked stock movement history",kind="transactions",rows=rows,stores=stores,financial_years=fys,selected_store=selected_store,selected_fy=selected_fy,search=search or "",page=page,page_size=page_size,pages=pages,total=total)
+
+
+@router.get("/app/registers/computers", include_in_schema=False)
+async def computer_register_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, search: str | None = None, page: int = 1, page_size: int = 50, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    stores,fys,selected_store,selected_fy=await load_store_context(current_user,session,store_id,None); raw=await RegisterService(session).computer_register(current_user.id,store_id,search=search); total=len(raw); page,page_size,pages,offset=page_window(total,page,page_size)
+    return render(request,"register_assets.html",current_user,title="Computer Register",subtitle="Computer/printer assets filtered from the Asset Register",assets=raw[offset:offset+page_size],stores=stores,financial_years=fys,selected_store=selected_store,selected_fy=selected_fy,search=search or "",page=page,page_size=page_size,pages=pages,total=total)
+
+
+@router.get("/app/registers/e-waste", include_in_schema=False)
+async def e_waste_register_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, search: str | None = None, page: int = 1, page_size: int = 50, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    stores,fys,selected_store,selected_fy=await load_store_context(current_user,session,store_id,None); raw=await RegisterService(session).e_waste_register(current_user.id,store_id,search=search); total=len(raw); page,page_size,pages,offset=page_window(total,page,page_size)
+    return render(request,"register_assets.html",current_user,title="E-Waste Register",subtitle="Unserviceable/disposed asset lifecycle view",assets=raw[offset:offset+page_size],stores=stores,financial_years=fys,selected_store=selected_store,selected_fy=selected_fy,search=search or "",page=page,page_size=page_size,pages=pages,total=total)
+
+@router.get("/app/outward-pass/{issue_id}", include_in_schema=False)
+async def outward_pass_page(issue_id: int, request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    await require_view_permission(session, current_user.id, "REGISTER_VIEW")
+    issue = await session.scalar(select(Issue).options(selectinload(Issue.lines).selectinload(IssueLine.item), selectinload(Issue.lines).selectinload(IssueLine.unit)).where(Issue.id == issue_id))
+    if issue is None: raise HTTPException(404, "Issue not found")
+    await AuthorizationService(session).require_store_visibility(current_user.id, issue.source_store_id)
+    store = await session.get(Store, issue.source_store_id); office = await session.get(Office, issue.destination_office_id)
+    section = await session.get(Section, issue.destination_section_id) if issue.destination_section_id else None
+    if issue.status != "FINALIZED": raise HTTPException(409, "Only finalized issues can generate an outward pass")
+    return render(request,"outward_pass.html",current_user,issue=issue,store=store,office=office,section=section)
+
+
+@router.get("/app/outward-pass/{issue_id}.pdf", include_in_schema=False)
+async def outward_pass_pdf(issue_id: int, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    await require_view_permission(session, current_user.id, "REGISTER_VIEW")
+    issue = await session.scalar(select(Issue).options(selectinload(Issue.lines).selectinload(IssueLine.item), selectinload(Issue.lines).selectinload(IssueLine.unit)).where(Issue.id == issue_id))
+    if issue is None: raise HTTPException(404,"Issue not found")
+    await AuthorizationService(session).require_store_visibility(current_user.id, issue.source_store_id)
+    if issue.status != "FINALIZED": raise HTTPException(409,"Only finalized issues can generate an outward pass")
+    store=await session.get(Store,issue.source_store_id); office=await session.get(Office,issue.destination_office_id); section=await session.get(Section,issue.destination_section_id) if issue.destination_section_id else None
+    rows=[{"item":f"{line.item.code} — {line.item.name}" if line.item else line.item_id,"unit":line.unit.code if line.unit else line.unit_id,"quantity":line.quantity} for line in issue.lines]
+    cols=[("item","Item"),("unit","Unit"),("quantity","Quantity")]
+    subtitle=f"Pass reference: {issue.issue_no} | Date: {issue.issue_date} | From: {store.name if store else issue.source_store_id} | To: {office.name if office else issue.destination_office_id}{(' / '+section.name) if section else ''}"
+    return pdf_response("Outward Pass",cols,rows,subtitle)
+
+
+@router.get("/app/registers/item-stock.pdf", include_in_schema=False)
+async def item_stock_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    await require_view_permission(session, current_user.id, "REGISTER_VIEW")
+    stores,fys,selected_store,selected_fy=await load_store_context(current_user,session,store_id,financial_year_id)
+    if not selected_store or not selected_fy: raise HTTPException(422,"Store and financial year are required")
+    await AuthorizationService(session).require_store_visibility(current_user.id, selected_store.id)
+    raw=await StockService(session).all_item_balances(selected_store.id,selected_fy.id,search)
+    rows=[dict(r._mapping) for r in raw]
+    cols=[("item_code","Code"),("item_name","Item"),("unit_code","Unit"),("balance","Balance")]
+    return pdf_response("Item Stock Register",cols,rows,f"{selected_store.name} | FY {selected_fy.year_name}")
+
+
+@router.get("/app/registers/issues.pdf", include_in_schema=False)
+async def issue_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    rows=await RegisterService(session).issue_register(current_user.id,store_id,financial_year_id,search=search)
+    cols=[("issue_no","Issue"),("issue_date","Date"),("store_name","Store"),("office_name","Destination Office"),("section_name","Section"),("indent_no","Indent"),("status","Status")]
+    return pdf_response("Issue Register",cols,rows)
+
+
+@router.get("/app/registers/distribution.pdf", include_in_schema=False)
+async def distribution_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    rows=await RegisterService(session).distribution_register(current_user.id,store_id,financial_year_id,search=search)
+    cols=[("issue_date","Date"),("issue_no","Issue"),("office_name","Destination"),("section_name","Section"),("item_code","Item Code"),("item_name","Item"),("quantity","Quantity")]
+    return pdf_response("Distribution Register",cols,rows)
+
+
+@router.get("/app/registers/transactions.pdf", include_in_schema=False)
+async def transaction_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    rows=await RegisterService(session).transaction_register(current_user.id,store_id,financial_year_id,search=search)
+    cols=[("movement_date","Date"),("movement_type","Movement"),("store_name","Store"),("item_code","Item Code"),("item_name","Item"),("quantity_in","In"),("quantity_out","Out"),("reference_no","Document")]
+    return pdf_response("Transaction Register",cols,rows)
+
+
+@router.get("/app/registers/computers.pdf", include_in_schema=False)
+async def computer_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    assets=await RegisterService(session).computer_register(current_user.id,store_id,search=search)
+    rows=[{"asset_no":a.asset_no,"item":f"{a.item.code} — {a.item.name}" if a.item else a.item_id,"serial":a.serial_no or "","status":a.status,"store":a.current_store_id or "","office":a.current_office_id or "","section":a.current_section_id or ""} for a in assets]
+    cols=[("asset_no","Asset No"),("item","Item"),("serial","Serial"),("status","Status"),("store","Store"),("office","Office"),("section","Section")]
+    return pdf_response("Computer Register",cols,rows)
+
+
+@router.get("/app/registers/e-waste.pdf", include_in_schema=False)
+async def e_waste_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    assets=await RegisterService(session).e_waste_register(current_user.id,store_id,search=search)
+    rows=[{"asset_no":a.asset_no,"item":f"{a.item.code} — {a.item.name}" if a.item else a.item_id,"serial":a.serial_no or "","status":a.status,"store":a.current_store_id or "","office":a.current_office_id or "","section":a.current_section_id or ""} for a in assets]
+    cols=[("asset_no","Asset No"),("item","Item"),("serial","Serial"),("status","Status"),("store","Store"),("office","Office"),("section","Section")]
+    return pdf_response("E-Waste Register",cols,rows)
+
+
 @router.get("/app/returns", include_in_schema=False)
 async def returns_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, status: str | None = None, session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    await require_view_permission(session, current_user.id, "STOCK_RETURN")
+    await require_view_permission(session, current_user.id, "STOCK_RETURN_VIEW")
     visible = await AuthorizationService(session).get_visible_stores(current_user.id)
     stmt = select(StockReturn).options(selectinload(StockReturn.lines))
     if visible is not None: stmt = stmt.where(StockReturn.store_id.in_(visible))

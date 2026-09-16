@@ -382,6 +382,8 @@ class TransferService:
             raise HTTPException(404, "Transfer discrepancy not found")
         if discrepancy.status == "CLOSED":
             raise HTTPException(409, "Discrepancy is already closed")
+        if discrepancy.reported_by == actor_id:
+            raise HTTPException(403, "The user who reported the transfer discrepancy cannot resolve it")
 
         transfer = await self.repository.get(discrepancy.transfer_id, for_update=True)
         if transfer is None:

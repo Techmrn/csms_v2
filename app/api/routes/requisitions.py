@@ -11,6 +11,7 @@ from app.schemas.requisition import (
     RequisitionResponse,
 )
 from app.services.requisition import RequisitionService
+from app.services.authorization import AuthorizationService
 
 router = APIRouter(prefix="/requisitions", tags=["central-store-requisitions"])
 
@@ -24,9 +25,19 @@ async def create_requisition(payload: RequisitionCreate, current_user: User = De
 async def list_requisitions(
     requesting_store_id: int | None = None,
     status: str | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await RequisitionService(session).list(requesting_store_id, status)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "REQUISITION_VIEW")
+    scoped = await auth.scoped_store_ids(current_user.id, requesting_store_id)
+    service = RequisitionService(session)
+    if scoped is None:
+        return await service.list(None, status)
+    rows = []
+    for sid in scoped:
+        rows.extend(await service.list(sid, status))
+    return rows
 
 
 @router.get("/{requisition_id}", response_model=RequisitionResponse)

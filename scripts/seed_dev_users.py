@@ -8,6 +8,7 @@ from app.models.role import Role
 from app.models.store import Store
 from app.models.user import User, user_roles, user_stores
 from app.models.office import Office
+from app.models.section import Section
 
 
 DEV_USERS = [
@@ -42,6 +43,17 @@ async def seed_dev_users():
                 )
                 session.add(user)
                 await session.flush()
+            effective_section_id = section_id
+            if role_code == "SECTION_USER" and effective_section_id is None:
+                effective_section_id = await session.scalar(
+                    select(Section.id)
+                    .where(Section.office_id == offices.get(office_code), Section.is_active.is_(True))
+                    .order_by(Section.id)
+                    .limit(1)
+                )
+                if effective_section_id is None:
+                    print("WARNING: SECTION_USER has no active section; assign one before testing online indents.")
+            user.section_id = effective_section_id
             if role_code in roles:
                 await session.execute(
                     pg_insert(user_roles)

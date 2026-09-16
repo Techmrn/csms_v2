@@ -12,6 +12,7 @@ from app.schemas.transfer import (
     TransferDiscrepancyResponse,
 )
 from app.services.transfer import TransferService
+from app.services.authorization import AuthorizationService
 
 router = APIRouter(prefix="/transfers", tags=["stock-transfers"])
 
@@ -20,9 +21,19 @@ router = APIRouter(prefix="/transfers", tags=["stock-transfers"])
 async def list_transfers(
     store_id: int | None = None,
     status: str | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await TransferService(session).list(store_id, status)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "STOCK_TRANSFER_VIEW")
+    scoped = await auth.scoped_store_ids(current_user.id, store_id)
+    service = TransferService(session)
+    if scoped is None:
+        return await service.list(None, status)
+    rows = []
+    for sid in scoped:
+        rows.extend(await service.list(sid, status))
+    return rows
 
 
 @router.get("/{transfer_id}", response_model=TransferResponse)

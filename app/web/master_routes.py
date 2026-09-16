@@ -57,10 +57,20 @@ async def admin_home(
     if isinstance(current_user, RedirectResponse):
         return current_user
     service = MasterAdminService(session)
-    try:
-        await service.require_master(current_user.id)
-    except HTTPException:
-        await service.require_user_admin(current_user.id)
+    perms = {
+        "MASTER_DATA_MANAGE",
+        "ORGANIZATION_MANAGE",
+        "USER_MANAGE",
+    }
+    user_perms = {
+        permission.code
+        for role in current_user.roles
+        if role.is_active
+        for permission in role.permissions
+        if permission.is_active
+    }
+    if not user_perms.intersection(perms):
+        raise HTTPException(403, "User lacks administration access")
     counts = await service.get_dashboard_counts()
     return render(request, "admin_home.html", current_user, counts=counts)
 

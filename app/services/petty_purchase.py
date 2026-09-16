@@ -206,6 +206,8 @@ class PettyPurchaseService:
 
         await self.auth.require_permission(actor_id, "PETTY_PURCHASE_VERIFY")
         await self.auth.require_store_controller(actor_id, purchase.store_id)
+        if purchase.created_by == actor_id:
+            raise HTTPException(403, "The person who created the petty purchase cannot verify it")
 
         fy = await self.session.get(FinancialYear, purchase.financial_year_id)
         if fy is None or fy.is_closed:
@@ -229,6 +231,8 @@ class PettyPurchaseService:
         if purchase.status != "VERIFIED":
             raise HTTPException(409, f"Petty purchase is {purchase.status}; only VERIFIED purchases can be posted")
         await self.auth.require_store_assignment(actor_id, purchase.store_id)
+        if purchase.verified_by == actor_id:
+            raise HTTPException(403, "The verifying officer cannot post the petty purchase")
 
         fy = await self.session.get(FinancialYear, purchase.financial_year_id)
         if fy is None or fy.is_closed:

@@ -5,7 +5,7 @@ BASE_URL = "http://localhost:8000"
 
 @pytest.fixture(scope="session")
 def token():
-    resp = httpx.post(f"{BASE_URL}/api/auth/token", data={"username": "dev_director", "password": "DevOnly123!"})
+    resp = httpx.post(f"{BASE_URL}/api/auth/token", data={"username": "dev_director", "password": "Password@1"})
     if resp.status_code == 200:
         return resp.json()["access_token"]
     return None

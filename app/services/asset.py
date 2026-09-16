@@ -40,7 +40,7 @@ class AssetService:
         role_codes = set((await self.session.scalars(
             select(Role.code).join(user_roles, user_roles.c.role_id == Role.id).where(user_roles.c.user_id == actor_id, Role.is_active.is_(True))
         )).all())
-        department_wide = "DIRECTOR" in role_codes or "SUPERINTENDENT" in role_codes
+        department_wide = "SYSTEM_ADMIN" in role_codes or "DIRECTOR" in role_codes
         visible_stores = await self.auth.get_visible_stores(actor_id)
 
         if store_id is not None and not department_wide and (visible_stores is None or store_id not in visible_stores):

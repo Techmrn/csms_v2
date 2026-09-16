@@ -6,6 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.session import AsyncSessionLocal, engine
 from app.models import Category, FinancialYear, Office, Permission, Role, Store, Unit
+from app.security.permissions import PERMISSIONS, ROLE_PERMISSIONS
 
 ROLES = [
     ("SYSTEM_ADMIN", "System Administrator"),
@@ -31,92 +32,6 @@ UNITS = [
     ("BOX", "Box", "box", False),
     ("METER", "Meter", "m", True),
 ]
-
-PERMISSIONS = [
-    ("STOCK_VIEW", "View stock", "STOCK", "VIEW"),
-    ("STOCK_OPENING_CREATE", "Enter and post opening stock", "STOCK", "OPENING_CREATE"),
-    ("STOCK_RECEIPT", "Receive stock", "STOCK", "RECEIPT"),
-    ("STOCK_ISSUE", "Issue stock", "STOCK", "ISSUE"),
-    ("STOCK_TRANSFER_DISPATCH", "Dispatch transfer", "STOCK", "TRANSFER_DISPATCH"),
-    ("STOCK_TRANSFER_RECEIVE", "Receive transfer", "STOCK", "TRANSFER_RECEIVE"),
-    ("STOCK_TRANSFER_DISCREPANCY_RESOLVE", "Resolve transfer discrepancy", "STOCK", "TRANSFER_DISCREPANCY_RESOLVE"),
-    ("STOCK_RETURN", "Process stock return", "STOCK", "RETURN"),
-    ("STOCK_VERIFY", "Verify stock", "STOCK", "VERIFY"),
-    ("STOCK_ADJUST_AUTHORIZE", "Authorize stock adjustment", "STOCK", "ADJUST_AUTHORIZE"),
-    ("STOCK_UNSERVICEABLE_AUTHORIZE", "Authorize unserviceable stock", "STOCK", "UNSERVICEABLE_AUTHORIZE"),
-    ("STOCK_VERIFICATION_CREATE", "Create stock verification", "STOCK", "VERIFICATION_CREATE"),
-    ("STOCK_ADJUST_CREATE", "Create stock adjustment", "STOCK", "ADJUST_CREATE"),
-    ("STOCK_ADJUST_POST", "Post stock adjustment", "STOCK", "ADJUST_POST"),
-    ("STOCK_UNSERVICEABLE_CREATE", "Report unserviceable stock", "STOCK", "UNSERVICEABLE_CREATE"),
-    ("STOCK_UNSERVICEABLE_POST", "Post unserviceable stock", "STOCK", "UNSERVICEABLE_POST"),
-    ("INDENT_CREATE", "Create indent", "INDENT", "CREATE"),
-    ("INDENT_APPROVE", "Approve indent", "INDENT", "APPROVE"),
-    ("INDENT_PROCESS", "Process indent", "INDENT", "PROCESS"),
-    ("REQUISITION_CREATE", "Create central store requisition", "REQUISITION", "CREATE"),
-    ("REQUISITION_APPROVE_BRANCH", "Approve branch requisition", "REQUISITION", "APPROVE_BRANCH"),
-    ("REQUISITION_APPROVE_CENTRAL", "Approve central requisition", "REQUISITION", "APPROVE_CENTRAL"),
-    ("ASSET_VIEW", "View assets", "ASSET", "VIEW"),
-    ("ASSET_CREATE", "Create asset", "ASSET", "CREATE"),
-    ("ASSET_REPAIR", "Send asset for repair", "ASSET", "REPAIR"),
-    ("ASSET_REPAIR_RETURN", "Return asset from repair", "ASSET", "REPAIR_RETURN"),
-    ("ASSET_UNSERVICEABLE", "Authorize asset as unserviceable", "ASSET", "UNSERVICEABLE"),
-    ("ASSET_DISPOSE", "Dispose asset", "ASSET", "DISPOSE"),
-    ("ASSET_LOST", "Mark asset as lost", "ASSET", "LOST"),
-    ("REPORT_VIEW", "View reports", "REPORT", "VIEW"),
-    ("AUDIT_VIEW", "View audit history", "AUDIT", "VIEW"),
-    ("PETTY_PURCHASE_CREATE", "Create petty purchase", "PETTY_PURCHASE", "CREATE"),
-    ("PETTY_PURCHASE_VERIFY", "Verify petty purchase", "PETTY_PURCHASE", "VERIFY"),
-    ("PETTY_PURCHASE_POST", "Post petty purchase", "PETTY_PURCHASE", "POST"),
-    ("MASTER_DATA_MANAGE", "Manage master data", "MASTER", "MANAGE"),
-    ("ORGANIZATION_MANAGE", "Manage offices, stores and sections", "ORGANIZATION", "MANAGE"),
-    ("USER_MANAGE", "Manage users, roles and store assignments", "USER", "MANAGE"),
-]
-
-ROLE_PERMISSIONS = {
-    "SYSTEM_ADMIN": [
-        "STOCK_VIEW", "ASSET_VIEW", "REPORT_VIEW", "AUDIT_VIEW",
-        "MASTER_DATA_MANAGE", "ORGANIZATION_MANAGE", "USER_MANAGE",
-    ],
-    "DIRECTOR": ["STOCK_VIEW", "REPORT_VIEW", "AUDIT_VIEW", "ASSET_VIEW"],
-    "DEPUTY_SUPDT_STORES": [
-        "STOCK_VIEW", "STOCK_VERIFY", "STOCK_ADJUST_AUTHORIZE",
-        "STOCK_UNSERVICEABLE_AUTHORIZE", "STOCK_TRANSFER_DISCREPANCY_RESOLVE", "REQUISITION_APPROVE_CENTRAL", "INDENT_APPROVE",
-        "REPORT_VIEW", "AUDIT_VIEW", "ASSET_VIEW", "PETTY_PURCHASE_VERIFY",
-        "ASSET_REPAIR", "ASSET_REPAIR_RETURN", "ASSET_UNSERVICEABLE", "ASSET_DISPOSE", "ASSET_LOST",
-    ],
-    "GENERAL_STOREKEEPER": [
-        "STOCK_VIEW", "STOCK_OPENING_CREATE", "STOCK_RECEIPT", "STOCK_ISSUE",
-        "STOCK_TRANSFER_DISPATCH", "STOCK_RETURN", "INDENT_PROCESS",
-        "REQUISITION_CREATE", "ASSET_VIEW", "ASSET_CREATE", "PETTY_PURCHASE_CREATE", "PETTY_PURCHASE_POST",
-        "ASSET_REPAIR", "ASSET_REPAIR_RETURN",
-        "STOCK_VERIFICATION_CREATE", "STOCK_ADJUST_CREATE", "STOCK_ADJUST_POST",
-        "STOCK_UNSERVICEABLE_CREATE", "STOCK_UNSERVICEABLE_POST",
-    ],
-    "ASSISTANT_STOREKEEPER": [
-        "STOCK_VIEW", "STOCK_OPENING_CREATE", "STOCK_RECEIPT", "STOCK_ISSUE",
-        "STOCK_TRANSFER_DISPATCH", "STOCK_RETURN", "INDENT_PROCESS",
-        "REQUISITION_CREATE", "ASSET_VIEW", "ASSET_CREATE", "PETTY_PURCHASE_CREATE", "PETTY_PURCHASE_POST",
-        "ASSET_REPAIR", "ASSET_REPAIR_RETURN",
-        "STOCK_VERIFICATION_CREATE", "STOCK_ADJUST_CREATE", "STOCK_ADJUST_POST",
-        "STOCK_UNSERVICEABLE_CREATE", "STOCK_UNSERVICEABLE_POST",
-    ],
-    "BRANCH_HEAD": [
-        "STOCK_VIEW", "STOCK_TRANSFER_DISCREPANCY_RESOLVE", "STOCK_VERIFY", "INDENT_APPROVE",
-        "REQUISITION_APPROVE_BRANCH", "REPORT_VIEW", "ASSET_VIEW", "PETTY_PURCHASE_VERIFY",
-        "STOCK_ADJUST_AUTHORIZE", "STOCK_UNSERVICEABLE_AUTHORIZE",
-        "ASSET_UNSERVICEABLE", "ASSET_DISPOSE", "ASSET_LOST",
-    ],
-    "BRANCH_STOREKEEPER": [
-        "STOCK_VIEW", "STOCK_OPENING_CREATE", "STOCK_RECEIPT", "STOCK_ISSUE",
-        "STOCK_TRANSFER_RECEIVE", "STOCK_RETURN", "INDENT_PROCESS",
-        "INDENT_CREATE", "REQUISITION_CREATE", "ASSET_VIEW", "ASSET_CREATE",
-        "PETTY_PURCHASE_CREATE", "PETTY_PURCHASE_POST",
-        "ASSET_REPAIR", "ASSET_REPAIR_RETURN",
-        "STOCK_VERIFICATION_CREATE", "STOCK_ADJUST_CREATE", "STOCK_ADJUST_POST",
-        "STOCK_UNSERVICEABLE_CREATE", "STOCK_UNSERVICEABLE_POST",
-    ],
-    "SECTION_USER": ["INDENT_CREATE"],
-}
 
 
 async def seed() -> None:
@@ -147,18 +62,19 @@ async def seed() -> None:
 
         await session.flush()
 
+        catalog_codes = {code for code, *_ in PERMISSIONS}
+        all_permissions = (await session.scalars(select(Permission))).all()
+        for permission in all_permissions:
+            permission.is_active = permission.code in catalog_codes
+
         roles_result = await session.execute(select(Role).options(selectinload(Role.permissions)))
         roles_by_code = {role.code: role for role in roles_result.scalars().all()}
         permissions_by_code = {permission.code: permission for permission in (await session.scalars(select(Permission))).all()}
         for role_code, permission_codes in ROLE_PERMISSIONS.items():
             role = roles_by_code[role_code]
-            if role_code == "SYSTEM_ADMIN":
-                role.permissions = [permissions_by_code[code] for code in permission_codes if code in permissions_by_code]
-                continue
-            existing = {permission.code for permission in role.permissions}
-            for permission_code in permission_codes:
-                if permission_code in permissions_by_code and permission_code not in existing:
-                    role.permissions.append(permissions_by_code[permission_code])
+            # Synchronize the complete approved matrix. This deliberately removes
+            # stale permissions left by older development seeds.
+            role.permissions = [permissions_by_code[code] for code in permission_codes]
 
         if await session.scalar(select(FinancialYear.id).limit(1)) is None:
             session.add(

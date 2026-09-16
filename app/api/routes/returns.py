@@ -6,6 +6,7 @@ from app.security.auth import get_current_user
 from app.models.user import User
 from app.schemas.stock_return import StockReturnCreate, StockReturnResponse
 from app.services.stock_return import StockReturnService
+from app.services.authorization import AuthorizationService
 
 router = APIRouter(prefix="/returns", tags=["returns"])
 
@@ -26,7 +27,16 @@ async def list_returns(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await StockReturnService(session).list(store_id, status)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "STOCK_RETURN_VIEW")
+    scoped = await auth.scoped_store_ids(current_user.id, store_id)
+    service = StockReturnService(session)
+    if scoped is None:
+        return await service.list(None, status)
+    rows = []
+    for sid in scoped:
+        rows.extend(await service.list(sid, status))
+    return rows
 
 
 @router.get("/{return_id}", response_model=StockReturnResponse)

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Item Stock Register{% endblock %}
+{% block page_title %}Item Stock Register{% endblock %}
+{% block content %}
+<div class="context-bar">
+  <div class="context-title">All items in the selected store, including zero-balance items</div>
+  <form method="get" action="/app/registers/item-stock" class="context-form">
+    <select name="store_id" required><option value="">Select store</option>{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select>
+    <select name="financial_year_id" required><option value="">Select financial year</option>{% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}</select>
+    <input name="search" value="{{ search }}" placeholder="Search code or item" aria-label="Search items">
+    <select name="page_size"><option value="25" {% if page_size==25 %}selected{% endif %}>25</option><option value="50" {% if page_size==50 %}selected{% endif %}>50</option><option value="100" {% if page_size==100 %}selected{% endif %}>100</option></select>
+    <button class="button" type="submit">Apply</button>
+    {% if selected_store and selected_fy %}<a class="button" href="/app/registers/item-stock.pdf?store_id={{ selected_store.id }}&financial_year_id={{ selected_fy.id }}&search={{ search|urlencode }}">Download PDF</a>{% endif %}
+  </form>
+</div>
+<div class="card table-card"><table><thead><tr><th>Code</th><th>Item</th><th>Unit</th><th class="num">Current Balance</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row.item_code }}</td><td>{{ row.item_name }}</td><td>{{ row.unit_code }}</td><td class="num">{{ row.balance }}</td></tr>{% else %}<tr><td colspan="4" class="empty">Select a store and financial year.</td></tr>{% endfor %}</tbody></table></div>
+{% if total %}<div class="context-bar"><span class="muted">{{ total }} items</span><span class="muted">Page {{ page }} of {{ pages }}</span><div>{% if page > 1 %}<a class="button" href="?store_id={{ selected_store.id }}&financial_year_id={{ selected_fy.id }}&search={{ search|urlencode }}&page={{ page-1 }}&page_size={{ page_size }}">Previous</a>{% endif %} {% if page < pages %}<a class="button" href="?store_id={{ selected_store.id }}&financial_year_id={{ selected_fy.id }}&search={{ search|urlencode }}&page={{ page+1 }}&page_size={{ page_size }}">Next</a>{% endif %}</div></div>{% endif %}
+{% endblock %}

@@ -10,6 +10,7 @@ from app.db.session import AsyncSessionLocal
 from app.models.item import Item
 from app.models.category import Category
 from app.models.unit import Unit
+from app.models.store import Store
 from app.models.asset import Asset, AssetMovement
 
 from httpx import AsyncClient, ASGITransport
@@ -26,6 +27,7 @@ async def setup_items():
         cat_con = await session.scalar(select(Category).where(Category.type == "CONSUMABLE"))
         cat_asset = await session.scalar(select(Category).where(Category.type == "ASSET"))
         unit = await session.scalar(select(Unit).limit(1))
+        central_store = await session.scalar(select(Store).where(Store.store_type == "CENTRAL").order_by(Store.id))
         
         import uuid
         suffix = str(uuid.uuid4())[:8]
@@ -36,11 +38,12 @@ async def setup_items():
         session.add(asset_item)
         await session.commit()
         
-        return {"con_item_id": con_item.id, "asset_item_id": asset_item.id, "unit_id": unit.id}
+        store_id = central_store.id if central_store else 3
+        return {"con_item_id": con_item.id, "asset_item_id": asset_item.id, "unit_id": unit.id, "store_id": store_id}
 
 @pytest_asyncio.fixture(scope="module")
 async def auth_headers(client):
-    response = await client.post("/api/auth/token", data={"username": "dev_general_sk", "password": "DevOnly123!"})
+    response = await client.post("/api/auth/token", data={"username": "dev_general_sk", "password": "Password@1"})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
@@ -51,7 +54,7 @@ async def test_unauthenticated_asset_register(client):
 
 @pytest.mark.asyncio
 async def test_wrong_store_authenticated_user(client):
-    response = await client.post("/api/auth/token", data={"username": "dev_press_sk", "password": "DevOnly123!"})
+    response = await client.post("/api/auth/token", data={"username": "dev_press_sk", "password": "Password@1"})
     assert response.status_code == 200, response.text
     headers = {"Authorization": f"Bearer {response.json()['access_token']}"}
     
@@ -68,7 +71,7 @@ async def test_asset_receipt_workflow(client, setup_items, auth_headers):
     payload = {
         "receipt_date": "2026-04-15",
         "financial_year_id": 1,
-        "store_id": 1,
+        "store_id": setup_items["store_id"],
         "lines": [
             {
                 "item_id": con_id,

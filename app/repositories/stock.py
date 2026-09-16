@@ -66,6 +66,29 @@ class StockRepository:
         rows = (await self.session.execute(stmt)).all()
         return list(rows)
 
+    async def all_item_balances(self, store_id: int, financial_year_id: int, search: str | None = None):
+        """Return every active item for a store/FY, including zero-balance items."""
+        movement_balance = func.coalesce(func.sum(StockMovement.quantity_in), 0) - func.coalesce(
+            func.sum(StockMovement.quantity_out), 0
+        )
+        stmt = (
+            select(
+                Item.id.label("item_id"), Item.code.label("item_code"), Item.name.label("item_name"),
+                Unit.code.label("unit_code"), movement_balance.label("balance"),
+            )
+            .join(Unit, Unit.id == Item.unit_id)
+            .outerjoin(StockMovement, (StockMovement.item_id == Item.id) &
+                       (StockMovement.store_id == store_id) &
+                       (StockMovement.financial_year_id == financial_year_id))
+            .where(Item.is_active.is_(True))
+            .group_by(Item.id, Item.code, Item.name, Unit.code)
+        )
+        if search:
+            term = f"%{search.strip()}%"
+            stmt = stmt.where(Item.code.ilike(term) | Item.name.ilike(term))
+        stmt = stmt.order_by(Item.name, Item.code)
+        return list((await self.session.execute(stmt)).all())
+
     async def register(
         self,
         store_id: int,
