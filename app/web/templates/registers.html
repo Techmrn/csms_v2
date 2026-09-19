@@ -27,7 +27,7 @@
   <a class="card" href="/app/registers/e-waste{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>E-Waste Register</strong><div class="muted">Assets in the current unserviceable/disposal lifecycle.</div></a>
   <a class="card" href="/app/opening-stock{% if selected_store or selected_fy %}?{% if selected_store %}store_id={{ selected_store.id }}{% endif %}{% if selected_store and selected_fy %}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}"><strong>Opening Stock Register</strong><div class="muted">Opening-stock documents by store and financial year.</div></a>
   <a class="card" href="/app/receipts{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Goods Receipt Register</strong><div class="muted">Receipt documents and posting status.</div></a>
-  <a class="card" href="/app/returns{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Return Register</strong><div class="muted">Returns linked to original Issues.</div></a>
+  <a class="card" href="/app/returns{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Return Register</strong><div class="muted">CSMS issue returns and legacy/manual returns received into the store.</div></a>
   <a class="card" href="/app/transfers{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Transfer Register</strong><div class="muted">Inter-store transfer documents and receipt status.</div></a>
   <a class="card" href="/app/petty-purchases{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Petty Purchase Register</strong><div class="muted">Temporary and normal consumable acquisitions.</div></a>
 </div>

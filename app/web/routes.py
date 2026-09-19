@@ -29,11 +29,12 @@ from app.models.section import Section
 from app.models.stock_return import StockReturn
 from app.models.petty_purchase import PettyPurchase
 from app.models.requisition import CentralStoreRequisition, CentralStoreRequisitionLine
-from app.models.stock import OpeningStock
+from app.models.stock import OpeningStock, StockMovement
 from app.models.role import Role
 from app.models.store import Store
 from app.models.unit import Unit
 from app.models.user import User, user_roles
+from app.models.transfer import StockTransfer
 from app.security.auth import authenticate_user, create_access_token
 from app.schemas.indent import (
     IndentCreate,
@@ -44,7 +45,7 @@ from app.schemas.indent import (
     ManualIndentLineCreate,
 )
 from app.schemas.petty_purchase import PettyPurchaseCreate, PettyPurchaseLineCreate, PettyPurchasePostRequest, PettyPurchaseVerifyRequest
-from app.schemas.requisition import RequisitionCreate, RequisitionLineCreate, BranchApprovalRequest, CentralApprovalRequest, RequisitionApprovalLine
+from app.schemas.requisition import RequisitionCreate, RequisitionLineCreate, BranchApprovalRequest, BranchApprovalLine, CentralApprovalRequest, RequisitionApprovalLine
 from app.schemas.transfer import TransferDispatchRequest, TransferDispatchLine, TransferReceiveRequest, TransferReceiveLine
 from app.schemas.receipt import ReceiptCreate, ReceiptLineCreate, AssetReceiptInput
 from app.schemas.stock_return import StockReturnCreate, StockReturnLineCreate
@@ -80,6 +81,7 @@ MENU = [
     ("Returns", "/app/returns", "STOCK_RETURN_VIEW"),
     ("Petty Purchase", "/app/petty-purchases", "PETTY_PURCHASE_VIEW"),
     ("Registers", "/app/registers", "REGISTER_VIEW"),
+    ("My Activity", "/app/my-activity", None),
     ("Administration", "/app/admin", None),
 ]
 
@@ -122,6 +124,17 @@ def visible_menu(user: User) -> list[dict[str, str | None]]:
         if label == "Administration":
             admin_permissions = {"MASTER_DATA_MANAGE", "ORGANIZATION_MANAGE", "USER_MANAGE"}
             if perms.intersection(admin_permissions):
+                menu.append({"label": label, "href": href})
+            continue
+        if label == "Requisitions":
+            requisition_permissions = {
+                "REQUISITION_VIEW",
+                "REQUISITION_CREATE",
+                "REQUISITION_APPROVE_BRANCH",
+                "REQUISITION_APPROVE_CENTRAL",
+                "STOCK_TRANSFER_DISPATCH",
+            }
+            if perms.intersection(requisition_permissions):
                 menu.append({"label": label, "href": href})
             continue
         if permission and permission in perms:
@@ -670,11 +683,44 @@ async def new_indent_page(
     destination_offices = await permitted_destination_offices(session, current_user, selected_store)
     sections = await sections_for_offices(session, destination_offices)
 
+    available_assets_by_item: dict[int, list[dict]] = {}
+    if selected_store:
+        asset_stmt = (
+            select(Asset)
+            .options(selectinload(Asset.detail))
+            .where(
+                Asset.current_store_id == selected_store.id,
+                Asset.status == "IN_STOCK",
+            )
+            .order_by(Asset.item_id, Asset.asset_no)
+        )
+        assets = (await session.scalars(asset_stmt)).all()
+        for a in assets:
+            detail_str = ""
+            if a.detail:
+                parts = [p for p in [a.detail.make, a.detail.model] if p]
+                if parts:
+                    detail_str = f" ({' '.join(parts)})"
+            label = f"{a.asset_no}"
+            if a.serial_no:
+                label += f" — SN: {a.serial_no}"
+            if detail_str:
+                label += detail_str
+            available_assets_by_item.setdefault(a.item_id, []).append({
+                "id": a.id,
+                "asset_no": a.asset_no,
+                "serial_no": a.serial_no or "",
+                "label": label,
+            })
+
     availability = {}
     if selected_store and selected_fy:
         availability = await build_item_availability(
             session, selected_store.id, selected_fy.id
         )
+    for it in items:
+        if it.category and it.category.type == "ASSET":
+            availability[it.id] = Decimal(len(available_assets_by_item.get(it.id, [])))
 
     return render(
         request,
@@ -688,6 +734,7 @@ async def new_indent_page(
         sections=sections,
         destination_offices=destination_offices,
         availability=availability,
+        store_assets_json=json.dumps(available_assets_by_item),
         error=request.query_params.get("error"),
     )
 
@@ -972,13 +1019,24 @@ async def requisitions_page(request: Request, current_user: User | RedirectRespo
     perms = permission_codes(current_user)
     allowed = {"REQUISITION_VIEW", "REQUISITION_CREATE", "REQUISITION_APPROVE_BRANCH", "REQUISITION_APPROVE_CENTRAL", "STOCK_TRANSFER_DISPATCH"}
     if not perms.intersection(allowed): raise HTTPException(403, "User lacks requisition access")
-    visible = await AuthorizationService(session).get_visible_stores(current_user.id)
-    stmt = select(CentralStoreRequisition).options(selectinload(CentralStoreRequisition.lines).selectinload(CentralStoreRequisitionLine.item)).order_by(CentralStoreRequisition.requisition_date.desc(), CentralStoreRequisition.id.desc())
-    if visible is not None: stmt = stmt.where(CentralStoreRequisition.requesting_store_id.in_(visible))
+    auth = AuthorizationService(session)
+    visible = await auth.get_visible_stores(current_user.id)
+    central_store_ids = set((await session.scalars(select(Store.id).where(Store.store_type == "CENTRAL"))).all())
+    is_central_user = (
+        "REQUISITION_APPROVE_CENTRAL" in perms
+        or "STOCK_TRANSFER_DISPATCH" in perms
+        or (visible is not None and any(sid in central_store_ids for sid in visible))
+    )
+    stmt = select(CentralStoreRequisition).options(
+        selectinload(CentralStoreRequisition.lines).selectinload(CentralStoreRequisitionLine.item)
+    ).order_by(CentralStoreRequisition.requisition_date.desc(), CentralStoreRequisition.id.desc())
+    if visible is not None and not is_central_user:
+        stmt = stmt.where(CentralStoreRequisition.requesting_store_id.in_(visible))
     if status: stmt = stmt.where(CentralStoreRequisition.status == status)
     rows = list((await session.scalars(stmt.limit(100))).all())
+    all_stores = list((await session.scalars(select(Store).where(Store.is_active.is_(True)).order_by(Store.name))).all())
     stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, None, None)
-    return render(request, "requisitions.html", current_user, requisitions=rows, stores=stores, financial_years=fys, selected_fy=selected_fy, error=request.query_params.get("error"), success=request.query_params.get("success"))
+    return render(request, "requisitions.html", current_user, requisitions=rows, stores=all_stores, financial_years=fys, selected_fy=selected_fy, error=request.query_params.get("error"), success=request.query_params.get("success"))
 
 
 @router.get("/app/requisitions/new", include_in_schema=False)
@@ -992,6 +1050,66 @@ async def new_requisition_page(request: Request, current_user: User | RedirectRe
     if selected_store: await AuthorizationService(session).require_store_assignment(current_user.id, selected_store.id)
     items = list((await session.scalars(select(Item).options(selectinload(Item.category), selectinload(Item.unit)).where(Item.is_active.is_(True)).order_by(Item.name))).all())
     return render(request, "requisition_new.html", current_user, stores=branch_stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, items=items, error=request.query_params.get("error"))
+
+
+@router.get("/app/requisitions/{requisition_id}", include_in_schema=False)
+async def requisition_detail_page(requisition_id: int, request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    perms = permission_codes(current_user)
+    if not perms.intersection({"REQUISITION_VIEW", "STOCK_TRANSFER_DISPATCH"}):
+        raise HTTPException(403, "User lacks requisition access")
+    auth = AuthorizationService(session)
+    requisition = await session.scalar(
+        select(CentralStoreRequisition)
+        .options(selectinload(CentralStoreRequisition.lines).selectinload(CentralStoreRequisitionLine.item))
+        .where(CentralStoreRequisition.id == requisition_id)
+    )
+    if requisition is None: raise HTTPException(404, "Requisition not found")
+    visible = await auth.get_visible_stores(current_user.id)
+    central_store_ids = set((await session.scalars(select(Store.id).where(Store.store_type == "CENTRAL"))).all())
+    is_central_user = (
+        "REQUISITION_APPROVE_CENTRAL" in perms
+        or "STOCK_TRANSFER_DISPATCH" in perms
+        or (visible is not None and any(sid in central_store_ids for sid in visible))
+    )
+    if visible is not None and not is_central_user:
+        await auth.require_store_visibility(current_user.id, requisition.requesting_store_id)
+
+    service = RequisitionService(session)
+    fulfilling_store = await service.get_fulfilling_store(requisition)
+    fulfilling_available = {}
+    branch_available = {}
+    for line in requisition.lines:
+        # Available shown to the current approval authority is always from the
+        # store that fulfils the current requisition workflow.
+        stmt = select(func.coalesce(func.sum(StockMovement.quantity_in - StockMovement.quantity_out), 0)).where(
+            StockMovement.store_id == fulfilling_store.id,
+            StockMovement.financial_year_id == requisition.financial_year_id,
+            StockMovement.item_id == line.item_id,
+        )
+        fulfilling_available[line.item_id] = (await session.scalar(stmt)) or Decimal("0")
+        stmt2 = select(func.coalesce(func.sum(StockMovement.quantity_in - StockMovement.quantity_out), 0)).where(
+            StockMovement.store_id == requisition.requesting_store_id,
+            StockMovement.financial_year_id == requisition.financial_year_id,
+            StockMovement.item_id == line.item_id,
+        )
+        branch_available[line.item_id] = (await session.scalar(stmt2)) or Decimal("0")
+
+    requesting_store = await session.get(Store, requisition.requesting_store_id)
+    transfer = await session.scalar(
+        select(StockTransfer)
+        .options(selectinload(StockTransfer.lines))
+        .where(StockTransfer.requisition_id == requisition_id)
+        .order_by(StockTransfer.id.desc())
+    )
+    return render(
+        request, "requisition_detail.html", current_user, requisition=requisition,
+        fulfilling_store=fulfilling_store, fulfilling_available=fulfilling_available,
+        branch_available=branch_available, requesting_store=requesting_store,
+        transfer=transfer, today=date.today(),
+        is_central_user=is_central_user, error=request.query_params.get("error"),
+        success=request.query_params.get("success"),
+    )
 
 
 @router.post("/app/requisitions/new", include_in_schema=False)
@@ -1011,13 +1129,27 @@ async def create_requisition_web(request: Request, current_user: User | Redirect
 
 
 @router.post("/app/requisitions/{requisition_id}/approve-branch", include_in_schema=False)
-async def approve_requisition_branch_web(requisition_id: int, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
+async def approve_requisition_branch_web(requisition_id: int, request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
+    form = await request.form()
     try:
-        await RequisitionService(session).approve_branch(requisition_id, BranchApprovalRequest(remarks=None), current_user.id, approve=True)
-        return redirect_with_success("/app/requisitions", "Branch approval completed.")
-    except HTTPException as exc:
-        await session.rollback(); return redirect_with_error("/app/requisitions", exc.detail)
+        ids = repeated(form, "requisition_line_id")
+        qtys = repeated(form, "requested_quantity")
+        lines = [
+            BranchApprovalLine(requisition_line_id=int(ids[i]), requested_quantity=form_decimal(qtys[i]))
+            for i in range(len(ids))
+            if ids[i] and qtys[i]
+        ] if ids and qtys else None
+        remarks = form.get("remarks")
+        await RequisitionService(session).approve_branch(
+            requisition_id,
+            BranchApprovalRequest(remarks=str(remarks) if remarks else None, lines=lines),
+            current_user.id,
+            approve=True,
+        )
+        return redirect_with_success(f"/app/requisitions/{requisition_id}", "Branch approval completed.")
+    except (HTTPException, ValueError) as exc:
+        await session.rollback(); return redirect_with_error(f"/app/requisitions/{requisition_id}", exc.detail if isinstance(exc, HTTPException) else str(exc))
 
 
 @router.post("/app/requisitions/{requisition_id}/approve-central", include_in_schema=False)
@@ -1028,7 +1160,7 @@ async def approve_requisition_central_web(requisition_id: int, request: Request,
         ids, qtys = repeated(form, "requisition_line_id"), repeated(form, "approved_quantity")
         payload = CentralApprovalRequest(remarks=None, lines=[RequisitionApprovalLine(requisition_line_id=int(ids[i]), approved_quantity=form_decimal(qtys[i])) for i in range(len(ids))])
         await RequisitionService(session).approve_central(requisition_id, payload, current_user.id)
-        return redirect_with_success("/app/requisitions", "Central approval completed.")
+        return redirect_with_success(f"/app/requisitions/{requisition_id}", "Central approval completed.")
     except (HTTPException, ValueError) as exc:
         await session.rollback(); return redirect_with_error("/app/requisitions", exc.detail if isinstance(exc, HTTPException) else str(exc))
 
@@ -1041,9 +1173,48 @@ async def dispatch_requisition_web(requisition_id: int, request: Request, curren
         ids, qtys = repeated(form, "requisition_line_id"), repeated(form, "dispatch_quantity")
         payload = TransferDispatchRequest(transfer_date=date.fromisoformat(str(form["transfer_date"])), remarks=None, lines=[TransferDispatchLine(requisition_line_id=int(ids[i]), dispatch_quantity=form_decimal(qtys[i])) for i in range(len(ids))])
         await TransferService(session).dispatch(requisition_id, payload, current_user.id)
-        return redirect_with_success("/app/transfers", "Transfer dispatched successfully.")
+        return redirect_with_success(f"/app/requisitions/{requisition_id}", "Transfer dispatched successfully.")
     except (HTTPException, ValueError) as exc:
-        await session.rollback(); return redirect_with_error("/app/requisitions", exc.detail if isinstance(exc, HTTPException) else str(exc))
+        await session.rollback(); return redirect_with_error(f"/app/requisitions/{requisition_id}", exc.detail if isinstance(exc, HTTPException) else str(exc))
+
+
+@router.post("/app/requisitions/{requisition_id}/receive", include_in_schema=False)
+async def receive_requisition_web(requisition_id: int, request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+    form = await request.form()
+    try:
+        transfer = await session.scalar(
+            select(StockTransfer)
+            .options(selectinload(StockTransfer.lines))
+            .where(StockTransfer.requisition_id == requisition_id, StockTransfer.status == "DISPATCHED")
+            .order_by(StockTransfer.id.desc())
+        )
+        if transfer is None:
+            raise HTTPException(404, "No dispatched stock transfer found for this requisition")
+
+        req_line_ids = repeated(form, "requisition_line_id")
+        qtys = repeated(form, "received_quantity")
+        req_to_transfer = {tl.requisition_line_id: tl.id for tl in transfer.lines if tl.requisition_line_id}
+
+        lines_payload = []
+        if req_line_ids and qtys:
+            for i in range(len(req_line_ids)):
+                rid = int(req_line_ids[i])
+                if rid in req_to_transfer and i < len(qtys):
+                    lines_payload.append(TransferReceiveLine(transfer_line_id=req_to_transfer[rid], received_quantity=form_decimal(qtys[i])))
+        else:
+            for tl in transfer.lines:
+                lines_payload.append(TransferReceiveLine(transfer_line_id=tl.id, received_quantity=tl.quantity))
+
+        receive_date_str = form.get("receive_date")
+        receive_date = date.fromisoformat(str(receive_date_str)) if receive_date_str else date.today()
+        remarks = str(form.get("remarks")) if form.get("remarks") else None
+
+        payload = TransferReceiveRequest(receive_date=receive_date, remarks=remarks, lines=lines_payload)
+        await TransferService(session).receive(transfer.id, payload, current_user.id)
+        return redirect_with_success(f"/app/requisitions/{requisition_id}", "Stock received and accepted into branch store successfully.")
+    except (HTTPException, ValueError) as exc:
+        await session.rollback(); return redirect_with_error(f"/app/requisitions/{requisition_id}", exc.detail if isinstance(exc, HTTPException) else str(exc))
 
 
 @router.get("/app/transfers", include_in_schema=False)
@@ -1059,7 +1230,8 @@ async def transfers_page(request: Request, current_user: User | RedirectResponse
         for sid in visible:
             for row in await TransferService(session).list(sid, status):
                 if row.id not in seen: all_rows.append(row); seen.add(row.id)
-    return render(request, "transfers.html", current_user, transfers=all_rows, error=request.query_params.get("error"), success=request.query_params.get("success"))
+    stores = list((await session.scalars(select(Store).where(Store.is_active.is_(True)).order_by(Store.name))).all())
+    return render(request, "transfers.html", current_user, transfers=all_rows, stores=stores, error=request.query_params.get("error"), success=request.query_params.get("success"))
 
 
 @router.post("/app/transfers/{transfer_id}/receive", include_in_schema=False)
@@ -1073,6 +1245,33 @@ async def receive_transfer_web(transfer_id: int, request: Request, current_user:
         return redirect_with_success("/app/transfers", "Transfer received successfully.")
     except (HTTPException, ValueError) as exc:
         await session.rollback(); return redirect_with_error("/app/transfers", exc.detail if isinstance(exc, HTTPException) else str(exc))
+
+
+@router.get("/app/my-activity", include_in_schema=False)
+async def my_activity_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
+    if isinstance(current_user, RedirectResponse): return current_user
+
+    # Every authenticated active user may see their own activity. This does not
+    # grant access to anybody else's history or to the department-wide register.
+    rows: list[dict] = []
+
+    async def add_rows(model, label: str, number_attr: str, date_attr: str = "created_at", action: str = "Created"):
+        number_col = getattr(model, number_attr)
+        date_col = getattr(model, date_attr)
+        stmt = select(model).where(getattr(model, "created_by") == current_user.id).order_by(date_col.desc()).limit(100)
+        for obj in (await session.scalars(stmt)).all():
+            rows.append({"date": getattr(obj, date_attr), "type": label, "document": getattr(obj, number_attr), "status": getattr(obj, "status", ""), "action": action, "id": obj.id})
+
+    await add_rows(Indent, "Indent", "indent_no")
+    await add_rows(CentralStoreRequisition, "Requisition", "requisition_no")
+    await add_rows(Issue, "Issue", "issue_no", "created_at")
+    await add_rows(StockReturn, "Return", "return_no", "created_at")
+    await add_rows(PettyPurchase, "Petty Purchase", "petty_purchase_no")
+    await add_rows(StockTransfer, "Transfer", "transfer_no")
+    await add_rows(Receipt, "Receipt", "receipt_no")
+
+    rows.sort(key=lambda x: (x["date"] is not None, x["date"]), reverse=True)
+    return render(request, "my_activity.html", current_user, activities=rows[:200])
 
 
 @router.get("/app/petty-purchases", include_in_schema=False)
@@ -1101,7 +1300,11 @@ async def new_petty_purchase_page(request: Request, current_user: User | Redirec
     units = list((await session.scalars(select(Unit).where(Unit.is_active.is_(True)).order_by(Unit.name))).all())
     destination_offices = await permitted_destination_offices(session, current_user, selected_store)
     sections = await sections_for_offices(session, destination_offices)
-    return render(request, "petty_purchase_new.html", current_user, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, items=items, units=units, destination_offices=destination_offices, sections=sections, error=request.query_params.get("error"))
+    approved_indents = []
+    if selected_store is not None:
+        approved_stmt = select(Indent).options(selectinload(Indent.lines).selectinload(IndentLine.item)).where(Indent.store_id == selected_store.id, Indent.status.in_(("RECORDED", "PROCESSING"))).where(~select(Issue.id).where(Issue.indent_id == Indent.id).exists()).order_by(Indent.indent_date.desc(), Indent.id.desc()).limit(100)
+        approved_indents = list((await session.scalars(approved_stmt)).all())
+    return render(request, "petty_purchase_new.html", current_user, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, items=items, units=units, destination_offices=destination_offices, sections=sections, approved_indents=approved_indents, error=request.query_params.get("error"))
 
 
 @router.post("/app/petty-purchases/new", include_in_schema=False)
@@ -1317,63 +1520,79 @@ async def e_waste_register_pdf(current_user: User | RedirectResponse = Depends(g
 async def returns_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, status: str | None = None, session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
     await require_view_permission(session, current_user.id, "STOCK_RETURN_VIEW")
-    visible = await AuthorizationService(session).get_visible_stores(current_user.id)
+    auth = AuthorizationService(session)
+    perms = permission_codes(current_user)
+    visible = await auth.get_visible_stores(current_user.id)
     stmt = select(StockReturn).options(selectinload(StockReturn.lines))
-    if visible is not None: stmt = stmt.where(StockReturn.store_id.in_(visible))
+    is_section_user = "STOCK_RETURN_CREATE" in perms and "STOCK_RETURN" not in perms
+    if visible is not None and not is_section_user: stmt = stmt.where(StockReturn.store_id.in_(visible))
     if store_id is not None:
-        await AuthorizationService(session).require_store_visibility(current_user.id, store_id)
+        await auth.require_store_visibility(current_user.id, store_id)
         stmt = stmt.where(StockReturn.store_id == store_id)
+    if is_section_user and current_user.section_id is not None:
+        stmt = stmt.where(StockReturn.returning_section_id == current_user.section_id)
     if status: stmt = stmt.where(StockReturn.status == status)
     returns = list((await session.scalars(stmt.order_by(StockReturn.return_date.desc(), StockReturn.id.desc()).limit(100))).all())
     stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, None)
-    return render(request, "returns.html", current_user, returns=returns, stores=stores, financial_years=fys, selected_store=selected_store, error=request.query_params.get("error"))
-
+    return render(request, "returns.html", current_user, returns=returns, stores=stores, financial_years=fys, selected_store=selected_store, error=request.query_params.get("error"), success=request.query_params.get("success"))
 
 @router.get("/app/returns/new", include_in_schema=False)
 async def new_return_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    await AuthorizationService(session).require_permission(current_user.id, "STOCK_RETURN")
+    perms = permission_codes(current_user)
+    if "STOCK_RETURN_CREATE" not in perms and "STOCK_RETURN" not in perms: raise HTTPException(403, "User lacks return creation permission")
+    auth = AuthorizationService(session)
     stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, None)
-    issues = []
-    visible = await AuthorizationService(session).get_visible_stores(current_user.id)
-    stmt = select(Issue).options(selectinload(Issue.lines).selectinload(IssueLine.item))
-    if visible is not None: stmt = stmt.where(Issue.source_store_id.in_(visible))
-    issues = list((await session.scalars(stmt.order_by(Issue.issue_date.desc(), Issue.id.desc()).limit(100))).all())
-    return render(request, "return_new.html", current_user, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, issues=issues, error=request.query_params.get("error"))
-
+    is_section_user = "STOCK_RETURN_CREATE" in perms and "STOCK_RETURN" not in perms
+    if selected_store is None and stores: selected_store = stores[0]
+    if is_section_user and selected_store is None and current_user.office_id is not None:
+        selected_store = await session.scalar(select(Store).where(Store.office_id == current_user.office_id, Store.is_active.is_(True)).order_by(Store.id))
+        if selected_store is not None:
+            stores = [selected_store]
+    if selected_store is not None and not is_section_user: await auth.require_store_assignment(current_user.id, selected_store.id)
+    issues_stmt = select(Issue).options(selectinload(Issue.lines).selectinload(IssueLine.item)).where(Issue.status == "FINALIZED")
+    if is_section_user:
+        issues_stmt = issues_stmt.where(Issue.destination_office_id == current_user.office_id, Issue.destination_section_id == current_user.section_id)
+    else:
+        visible = await auth.get_visible_stores(current_user.id)
+        if visible is not None: issues_stmt = issues_stmt.where(Issue.source_store_id.in_(visible))
+    issues = list((await session.scalars(issues_stmt.order_by(Issue.issue_date.desc(), Issue.id.desc()).limit(100))).all())
+    items = list((await session.scalars(select(Item).options(selectinload(Item.category), selectinload(Item.unit)).where(Item.is_active.is_(True)).order_by(Item.name))).all())
+    units = list((await session.scalars(select(Unit).where(Unit.is_active.is_(True)).order_by(Unit.name))).all())
+    return render(request, "return_new.html", current_user, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, issues=issues, items=items, units=units, is_section_user=is_section_user, error=request.query_params.get("error"))
 
 @router.post("/app/returns/new", include_in_schema=False)
 async def create_return_web(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
     form = await request.form()
     try:
-        issue_id = int(form["original_issue_id"])
-        issue_line_ids, qtys, asset_ids = repeated(form, "original_issue_line_id"), repeated(form, "quantity"), repeated(form, "asset_ids")
+        return_type = str(form.get("return_type") or "CSMS_ISSUE")
+        issue_id = int(form["original_issue_id"]) if form.get("original_issue_id") else None
+        item_ids, issue_line_ids, qtys, unit_ids, asset_ids, line_remarks = (repeated(form, n) for n in ("item_id", "original_issue_line_id", "quantity", "unit_id", "asset_ids", "line_remarks"))
         lines=[]
-        for idx, lid in enumerate(issue_line_ids):
-            if not lid or idx >= len(qtys) or not qtys[idx]: continue
+        for idx, qty in enumerate(qtys):
+            if not qty: continue
             parsed_assets=[int(x.strip()) for x in (asset_ids[idx] if idx < len(asset_ids) else "").split(",") if x.strip()] or None
-            lines.append(StockReturnLineCreate(original_issue_line_id=int(lid), quantity=form_decimal(qtys[idx]), asset_ids=parsed_assets))
-        payload=StockReturnCreate(return_date=date.fromisoformat(str(form["return_date"])), financial_year_id=int(form["financial_year_id"]), store_id=int(form["store_id"]), original_issue_id=issue_id, returning_office_id=int(form["returning_office_id"]) if form.get("returning_office_id") else None, returning_section_id=int(form["returning_section_id"]) if form.get("returning_section_id") else None, reason=str(form["reason"]), remarks=str(form.get("remarks") or "") or None, lines=lines)
+            lines.append(StockReturnLineCreate(original_issue_line_id=int(issue_line_ids[idx]) if idx < len(issue_line_ids) and issue_line_ids[idx] else None, item_id=int(item_ids[idx]) if idx < len(item_ids) and item_ids[idx] else None, unit_id=int(unit_ids[idx]) if idx < len(unit_ids) and unit_ids[idx] else None, quantity=form_decimal(qty), asset_ids=parsed_assets, remarks=(line_remarks[idx] if idx < len(line_remarks) else None) or None))
+        payload=StockReturnCreate(return_date=date.fromisoformat(str(form["return_date"])), financial_year_id=int(form["financial_year_id"]), store_id=int(form["store_id"]), original_issue_id=issue_id, return_type=return_type, manual_reference=str(form.get("manual_reference") or "") or None, condition=str(form.get("condition") or "USABLE"), returning_user_id=current_user.id, returning_office_id=int(form["returning_office_id"]) if form.get("returning_office_id") else current_user.office_id, returning_section_id=int(form["returning_section_id"]) if form.get("returning_section_id") else current_user.section_id, reason=str(form["reason"]), remarks=str(form.get("remarks") or "") or None, lines=lines)
         await StockReturnService(session).create(payload, current_user.id)
-        return redirect_with_success("/app/returns", "Return action completed successfully.")
+        return redirect_with_success("/app/returns", "Return recorded successfully.")
     except (HTTPException, ValueError) as exc:
-        return redirect_with_error("/app/returns/new", exc.detail if isinstance(exc, HTTPException) else str(exc))
-
+        await session.rollback(); return redirect_with_error("/app/returns/new", exc.detail if isinstance(exc, HTTPException) else str(exc))
 
 @router.post("/app/returns/{return_id}/verify", include_in_schema=False)
 async def verify_return_web(return_id: int, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
     try:
         await StockReturnService(session).verify(return_id, current_user.id)
-        return redirect_with_success("/app/returns", "Return action completed successfully.")
+        return redirect_with_success("/app/returns", "Return verified successfully.")
     except HTTPException as exc: return redirect_with_error("/app/returns", exc.detail)
-
 
 @router.post("/app/returns/{return_id}/post", include_in_schema=False)
 async def post_return_web(return_id: int, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
     try:
         await StockReturnService(session).post(return_id, current_user.id)
-        return redirect_with_success("/app/returns", "Return action completed successfully.")
+        return redirect_with_success("/app/returns", "Return posted successfully.")
     except HTTPException as exc: return redirect_with_error("/app/returns", exc.detail)
+

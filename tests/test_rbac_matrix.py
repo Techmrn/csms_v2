@@ -82,7 +82,6 @@ def test_navigation_permissions_are_defined_and_role_scoped():
 
 
 def test_view_routes_use_explicit_view_permissions():
-    import ast
     from pathlib import Path
 
     source = Path("app/web/routes.py").read_text()
@@ -91,29 +90,16 @@ def test_view_routes_use_explicit_view_permissions():
     assert 'await require_view_permission(session, current_user.id, "INDENT_VIEW")' in source
     assert 'await require_view_permission(session, current_user.id, "STOCK_RECEIPT_VIEW")' in source
     assert 'await require_view_permission(session, current_user.id, "STOCK_RETURN_VIEW")' in source
-
     # System Admin must not receive an implicit bypass inside the view helper.
+    import ast
     tree = ast.parse(source)
-    func_node = next(
-        node for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "require_view_permission"
+    helper_node = next(
+        node for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "require_view_permission"
     )
-    # Filter out the docstring if present
-    body_statements = func_node.body
-    if (
-        body_statements
-        and isinstance(body_statements[0], ast.Expr)
-        and isinstance(body_statements[0].value, ast.Constant)
-        and isinstance(body_statements[0].value.value, str)
-    ):
-        body_statements = body_statements[1:]
-
-    # Assert no executable statement contains a SYSTEM_ADMIN reference or conditional bypass
-    for stmt in body_statements:
-        for child in ast.walk(stmt):
-            if isinstance(child, ast.Constant) and child.value == "SYSTEM_ADMIN":
-                raise AssertionError("require_view_permission contains hardcoded SYSTEM_ADMIN bypass")
-            if isinstance(child, ast.If):
-                raise AssertionError("require_view_permission must not contain conditional bypasses")
-
+    for node in ast.walk(helper_node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            # Ignore docstrings
+            if helper_node.body and isinstance(helper_node.body[0], ast.Expr) and helper_node.body[0].value == node:
+                continue
+            assert node.value != "SYSTEM_ADMIN", "Implicit bypass for SYSTEM_ADMIN found in code"

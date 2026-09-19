@@ -29,6 +29,7 @@ async def create_petty_purchase(
 async def list_petty_purchases(
     store_id: int | None = None,
     status: str | None = None,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
     auth = AuthorizationService(session)

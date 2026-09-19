@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Requisition {{ requisition.requisition_no }}{% endblock %}
+{% block page_title %}Requisition {{ requisition.requisition_no }}{% endblock %}
+{% block content %}
+<div class="context-bar">
+    <div>
+        <div class="context-title">Requisition review</div>
+        <div class="muted">Inter-store stock requisition workflow: Branch Request → Branch Approval → Central Approval → Central Issue.</div>
+    </div><a class="button" href="/app/requisitions">Back</a>
+</div>
+<div class="card">
+    <div class="grid cols-4">
+        <div><strong>Requisition</strong><br>{{ requisition.requisition_no }}</div>
+        <div><strong>Date</strong><br>{{ requisition.requisition_date }}</div>
+        <div><strong>Requesting Store</strong><br>{{ requesting_store.name if requesting_store else requisition.requesting_store_id }}</div>
+        <div><strong>Status</strong><br><span class="badge">{{ requisition.status }}</span></div>
+    </div>
+</div>
+<div class="card" style="margin-top:18px">
+    <h2>Lines</h2>
+    <div class="table-wrap">
+        <table class="entry-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Requested</th>
+                    {% if is_central_user %}
+                    <th>Available at {{ fulfilling_store.name }}</th>
+                    <th>Branch Stock</th>
+                    {% else %}
+                    <th>Available at {{ requesting_store.name if requesting_store else 'Branch' }}</th>
+                    {% endif %}
+                    <th>Approved</th>
+                    <th>Dispatched</th>
+                    <th>Received</th>
+                </tr>
+            </thead>
+            <tbody>{% for line in requisition.lines %}<tr>
+                    <td>{{ line.item.code if line.item else line.item_id }} — {{ line.item.name if line.item else '' }}</td>
+                    <td>
+                        {% if requisition.status == 'SUBMITTED' and 'REQUISITION_APPROVE_BRANCH' in permissions %}
+                        <input form="branch-approve" name="requested_quantity" value="{{ line.requested_quantity }}" type="number" min="0.001" step="0.001" required>
+                        <input form="branch-approve" type="hidden" name="requisition_line_id" value="{{ line.id }}">
+                        {% else %}
+                        {{ line.requested_quantity }}
+                        {% endif %}
+                    </td>
+                    {% if is_central_user %}
+                    <td>{{ fulfilling_available.get(line.item_id, 0) }}</td>
+                    <td>{{ branch_available.get(line.item_id, 0) }}</td>
+                    {% else %}
+                    <td>{{ branch_available.get(line.item_id, 0) }}</td>
+                    {% endif %}
+                    <td>{% if requisition.status == 'BRANCH_APPROVED' and 'REQUISITION_APPROVE_CENTRAL' in permissions %}
+                        <input form="central-approve" name="approved_quantity"
+                            value="{{ line.approved_quantity if line.approved_quantity is not none else line.requested_quantity }}"
+                            type="number" min="0" max="{{ line.requested_quantity }}" step="0.001">
+                        <input form="central-approve" type="hidden" name="requisition_line_id" value="{{ line.id }}">
+                        {% else %}
+                        {{ line.approved_quantity if line.approved_quantity is not none else '—' }}
+                        {% endif %}
+                    </td>
+                    <td>{{ line.dispatched_quantity }}</td>
+                    <td>{{ line.received_quantity }}</td>
+                </tr>{% endfor %}</tbody>
+        </table>
+    </div>
+</div>
+{% if requisition.status == 'SUBMITTED' and 'REQUISITION_APPROVE_BRANCH' in permissions %}
+<div class="card" style="margin-top:18px">
+    <h2>Branch Head Review & Approval</h2>
+    <div class="notice">Review the quantities requested by branch storekeeper. You can adjust the quantities if needed before approving for Central Store fulfillment.</div>
+    <form id="branch-approve" method="post" action="/app/requisitions/{{ requisition.id }}/approve-branch">
+        <label>Remarks (optional)<textarea name="remarks" rows="2">{{ requisition.remarks or '' }}</textarea></label>
+        <div class="form-actions" style="margin-top:12px">
+            <button class="button primary">Approve & Forward to Central Store</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+{% if requisition.status == 'BRANCH_APPROVED' and 'REQUISITION_APPROVE_CENTRAL' in permissions %}
+<div class="card" style="margin-top:18px">
+    <h2>Source-store approval</h2>
+    <div class="notice">Available quantity is calculated from the store that will fulfil this current requisition workflow. Change only Approved quantity; Requested quantity is read-only.</div>
+    <form id="central-approve" method="post" action="/app/requisitions/{{ requisition.id }}/approve-central">
+        <button class="button primary">Approve quantities</button>
+    </form>
+</div>
+{% endif %}
+{% if requisition.status in ['READY_FOR_TRANSFER', 'CENTRAL_APPROVED'] and 'STOCK_TRANSFER_DISPATCH' in permissions %}
+<div class="card" style="margin-top:18px">
+    <h2>Issue & Dispatch Transfer</h2>
+    <div class="notice">Issue stock from Central Store to fulfil the approved quantities for {{ requesting_store.name if requesting_store else 'Branch Store' }}.</div>
+    <form method="post" action="/app/requisitions/{{ requisition.id }}/dispatch" class="stack">
+        <label>Dispatch Date<input type="date" name="transfer_date" value="{{ requisition.requisition_date }}" required></label>
+        {% for line in requisition.lines %}
+        <input type="hidden" name="requisition_line_id" value="{{ line.id }}">
+        <label>{{ line.item.name if line.item else line.item_id }} — dispatch quantity
+            <input name="dispatch_quantity" value="{{ line.approved_quantity or 0 }}" type="number" min="0" max="{{ line.approved_quantity or 0 }}" step="0.001">
+        </label>
+        {% endfor %}
+        <button class="button primary">Issue stock transfer</button>
+    </form>
+</div>
+{% endif %}
+{% if requisition.status == 'DISPATCHED' and 'STOCK_TRANSFER_RECEIVE' in permissions %}
+<div class="card" style="margin-top:18px">
+    <h2>Accept & Receive Stock</h2>
+    <div class="notice">The requested stock has been dispatched from Central Store. Verify the physical items received and accept them into {{ requesting_store.name if requesting_store else 'Branch Store' }}.</div>
+    <form method="post" action="/app/requisitions/{{ requisition.id }}/receive" class="stack">
+        <label>Receive Date<input type="date" name="receive_date" value="{{ (today or requisition.requisition_date).isoformat() if today else requisition.requisition_date }}" required></label>
+        <div class="table-wrap" style="margin:12px 0;">
+            <table class="entry-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Dispatched Quantity</th>
+                        <th>Received Quantity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for line in requisition.lines %}
+                    <tr>
+                        <td>
+                            <input type="hidden" name="requisition_line_id" value="{{ line.id }}">
+                            <strong>{{ line.item.code if line.item else '' }}</strong> — {{ line.item.name if line.item else line.item_id }}
+                        </td>
+                        <td>{{ line.dispatched_quantity }}</td>
+                        <td>
+                            <input name="received_quantity" value="{{ line.dispatched_quantity }}" type="number" min="0" max="{{ line.dispatched_quantity }}" step="0.001" required style="max-width:180px;">
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <label>Remarks (optional)<textarea name="remarks" rows="2" placeholder="Any remarks on condition or delivery"></textarea></label>
+        <div class="form-actions" style="margin-top:12px">
+            <button class="button primary">Accept & Receive Stock</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -92,9 +92,17 @@
                 {% endfor %}
               </select>
               <input type="hidden" name="asset_ids" class="asset-ids">
-              <div class="asset-helper hidden">
-                Asset IDs for issue, comma separated:
-                <input type="text" class="asset-id-input" placeholder="e.g. 101,102">
+              <div class="asset-helper hidden" style="margin-top:6px;">
+                <div class="asset-picker-box" style="padding:8px 10px; background:var(--bg-card, #f8fafc); border:1px solid var(--border-color, #cbd5e1); border-radius:6px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <span style="font-size:0.8rem; font-weight:600; color:var(--text-muted, #475569);">Select Physical Assets (<span class="asset-count">0</span> selected):</span>
+                  </div>
+                  <div class="asset-list" style="max-height:130px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
+                  <div class="asset-empty-msg hidden" style="color:#dc2626; font-size:0.8rem; font-style:italic; padding:4px 0;">
+                    ⚠️ No in-stock physical assets available in this store for this item.
+                  </div>
+                  <div class="asset-qty-warning hidden" style="color:#b45309; font-size:0.75rem; margin-top:4px;"></div>
+                </div>
               </div>
             </td>
             <td>
@@ -120,12 +128,101 @@
 </div>
 
 <script>
-function filterManualSections(){const office=document.getElementById('manual_office_id').value;document.querySelectorAll('#manual_section_id option[data-office-id]').forEach(o=>o.hidden=o.dataset.officeId!==office);const s=document.getElementById('manual_section_id');if(s.value && s.options[s.selectedIndex].hidden)s.value='';}
+const STORE_ASSETS = {{ store_assets_json | safe }};
+
+function filterManualSections(){
+  const office=document.getElementById('manual_office_id').value;
+  document.querySelectorAll('#manual_section_id option[data-office-id]').forEach(o=>o.hidden=o.dataset.officeId!==office);
+  const s=document.getElementById('manual_section_id');
+  if(s.value && s.options[s.selectedIndex].hidden) s.value='';
+}
+
 function reloadContext(){
   const store = document.getElementById('store_id').value;
   const fy = document.getElementById('financial_year_id').value;
   window.location = `/app/indents/new?store_id=${encodeURIComponent(store)}&financial_year_id=${encodeURIComponent(fy)}`;
 }
+
+function renderAssetPicker(row, itemId) {
+  const list = row.querySelector('.asset-list');
+  const emptyMsg = row.querySelector('.asset-empty-msg');
+  const countSpan = row.querySelector('.asset-count');
+  const hiddenInput = row.querySelector('.asset-ids');
+  const warning = row.querySelector('.asset-qty-warning');
+
+  list.innerHTML = '';
+  hiddenInput.value = '';
+  countSpan.textContent = '0';
+  if (warning) warning.classList.add('hidden');
+
+  const assets = STORE_ASSETS[itemId] || [];
+  if (assets.length === 0) {
+    emptyMsg.classList.remove('hidden');
+    list.classList.add('hidden');
+  } else {
+    emptyMsg.classList.add('hidden');
+    list.classList.remove('hidden');
+    assets.forEach(asset => {
+      const label = document.createElement('label');
+      label.style.display = 'flex';
+      label.style.alignItems = 'center';
+      label.style.gap = '6px';
+      label.style.fontSize = '0.82rem';
+      label.style.cursor = 'pointer';
+      label.style.margin = '0';
+      label.style.fontWeight = 'normal';
+
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.value = asset.id;
+      chk.className = 'asset-chk';
+      chk.style.margin = '0';
+      chk.onchange = () => onAssetCheckboxChange(row);
+
+      const span = document.createElement('span');
+      span.textContent = asset.label;
+
+      label.appendChild(chk);
+      label.appendChild(span);
+      list.appendChild(label);
+    });
+  }
+}
+
+function onAssetCheckboxChange(row) {
+  const checked = Array.from(row.querySelectorAll('.asset-chk:checked')).map(c => c.value);
+  row.querySelector('.asset-ids').value = checked.join(',');
+  row.querySelector('.asset-count').textContent = checked.length;
+
+  const issuedInput = row.querySelector('.issued-input');
+  issuedInput.value = checked.length;
+  issuedInput.dataset.manual = '1';
+
+  const reqInput = row.querySelector('.requested-input');
+  if (!reqInput.value || parseFloat(reqInput.value) === 0 || parseFloat(reqInput.value) < checked.length) {
+    reqInput.value = checked.length;
+  }
+  checkAssetQuantityMatch(row);
+}
+
+function checkAssetQuantityMatch(row) {
+  const sel = row.querySelector('.item-select');
+  const opt = sel.options[sel.selectedIndex];
+  if (opt && opt.dataset.category === 'ASSET') {
+    const checked = Array.from(row.querySelectorAll('.asset-chk:checked'));
+    const issuedVal = parseFloat(row.querySelector('.issued-input').value) || 0;
+    const warning = row.querySelector('.asset-qty-warning');
+    if (warning) {
+      if (checked.length !== issuedVal) {
+        warning.textContent = `Selected assets (${checked.length}) must match issued quantity (${issuedVal}).`;
+        warning.classList.remove('hidden');
+      } else {
+        warning.classList.add('hidden');
+      }
+    }
+  }
+}
+
 function updateLine(sel){
   const row = sel.closest('tr');
   const opt = sel.options[sel.selectedIndex];
@@ -133,12 +230,17 @@ function updateLine(sel){
   row.querySelector('.unit-code').textContent = opt.dataset.unitCode || '—';
   row.querySelector('.available-value').textContent = opt.dataset.available || '0';
   const helper = row.querySelector('.asset-helper');
-  helper.classList.toggle('hidden', opt.dataset.category !== 'ASSET');
-  if(opt.dataset.category !== 'ASSET'){
-    row.querySelector('.asset-id-input').value = '';
+  const isAsset = opt.dataset.category === 'ASSET';
+  helper.classList.toggle('hidden', !isAsset);
+  if(isAsset){
+    renderAssetPicker(row, opt.value);
+  } else {
     row.querySelector('.asset-ids').value = '';
+    const list = row.querySelector('.asset-list');
+    if (list) list.innerHTML = '';
   }
 }
+
 function syncIssuedDefault(input){
   const row = input.closest('tr');
   const issued = row.querySelector('.issued-input');
@@ -146,17 +248,21 @@ function syncIssuedDefault(input){
     issued.value = input.value || '0';
   }
 }
+
 filterManualSections();
+
 document.addEventListener('input', (e) => {
-  if(e.target.classList.contains('issued-input')) e.target.dataset.manual = '1';
-  if(e.target.classList.contains('asset-id-input')){
-    e.target.closest('tr').querySelector('.asset-ids').value = e.target.value;
+  if(e.target.classList.contains('issued-input')) {
+    e.target.dataset.manual = '1';
+    checkAssetQuantityMatch(e.target.closest('tr'));
   }
 });
+
 function removeIndentRow(btn){
   const rows = document.querySelectorAll('#indent-lines .indent-line');
   if(rows.length > 1) btn.closest('tr').remove();
 }
+
 function addIndentRow(){
   const first = document.querySelector('#indent-lines .indent-line');
   const clone = first.cloneNode(true);
@@ -166,8 +272,31 @@ function addIndentRow(){
   clone.querySelector('.available-value').textContent = '—';
   clone.querySelector('.asset-helper').classList.add('hidden');
   clone.querySelector('.asset-ids').value='';
+  const list = clone.querySelector('.asset-list');
+  if (list) list.innerHTML = '';
+  const countSpan = clone.querySelector('.asset-count');
+  if (countSpan) countSpan.textContent = '0';
+  const warning = clone.querySelector('.asset-qty-warning');
+  if (warning) warning.classList.add('hidden');
   clone.querySelector('.issued-input').value='0';
   document.getElementById('indent-lines').appendChild(clone);
 }
+
+document.querySelector('form[method="post"]').addEventListener('submit', (e) => {
+  const rows = document.querySelectorAll('#indent-lines .indent-line');
+  for (const row of rows) {
+    const sel = row.querySelector('.item-select');
+    const opt = sel.options[sel.selectedIndex];
+    if (opt && opt.dataset.category === 'ASSET') {
+      const issued = parseFloat(row.querySelector('.issued-input').value) || 0;
+      const checked = Array.from(row.querySelectorAll('.asset-chk:checked'));
+      if (issued > 0 && checked.length !== issued) {
+        e.preventDefault();
+        alert(`For asset item "${opt.textContent.trim()}", you have entered Issued Quantity = ${issued}, but selected ${checked.length} asset(s). Please select exactly ${issued} physical asset(s).`);
+        return;
+      }
+    }
+  }
+});
 </script>
 {% endblock %}

@@ -24,8 +24,14 @@ class RequisitionApprovalLine(BaseModel):
     approved_quantity: Decimal = Field(ge=0)
 
 
+class BranchApprovalLine(BaseModel):
+    requisition_line_id: int
+    requested_quantity: Decimal = Field(gt=0)
+
+
 class BranchApprovalRequest(BaseModel):
     remarks: str | None = None
+    lines: list[BranchApprovalLine] | None = None
 
 
 class CentralApprovalRequest(BaseModel):

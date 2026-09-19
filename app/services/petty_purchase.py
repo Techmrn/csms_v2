@@ -258,6 +258,17 @@ class PettyPurchaseService:
             existing_issue = await self.session.scalar(select(Issue.id).where(Issue.indent_id == indent.id).limit(1))
             if existing_issue is not None:
                 raise HTTPException(409, "Linked indent already has an issue")
+            indent_items = {line.item_id: line for line in indent.lines}
+            for purchase_line in purchase.lines:
+                if purchase_line.item_id not in indent_items:
+                    raise HTTPException(422, f"Purchased item {purchase_line.item_id} is not part of the selected indent")
+                # An approved end-user indent represents the issue requirement.
+                # A petty purchase linked to it therefore issues the purchased
+                # quantity against that indent automatically; the user should not
+                # have to enter an internal issue quantity or destination.
+                purchase_line.immediate_issue_quantity = Decimal(purchase_line.quantity)
+            purchase.issue_office_id = indent.office_id
+            purchase.issue_section_id = indent.section_id
 
         item_ids = sorted({line.item_id for line in purchase.lines})
         purchase_by_item = {line.item_id: line for line in purchase.lines}

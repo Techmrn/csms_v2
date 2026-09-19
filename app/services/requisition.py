@@ -99,6 +99,13 @@ class RequisitionService:
             raise HTTPException(409, "Creator cannot approve the same requisition")
 
         if approve:
+            if payload.lines:
+                lines_by_id = {line.id: line for line in requisition.lines}
+                for uline in payload.lines:
+                    if uline.requisition_line_id in lines_by_id:
+                        if uline.requested_quantity <= 0:
+                            raise HTTPException(422, "Requested quantity must be greater than zero")
+                        lines_by_id[uline.requisition_line_id].requested_quantity = uline.requested_quantity
             requisition.status = "BRANCH_APPROVED"
             requisition.branch_approved_by = actor_id
             requisition.branch_approved_at = datetime.now(timezone.utc)
@@ -109,6 +116,29 @@ class RequisitionService:
             requisition.remarks = payload.remarks
         await self.session.commit()
         return await self.repository.get(requisition.id)
+
+    async def get_fulfilling_store(self, requisition: CentralStoreRequisition) -> Store:
+        """Return the current store that fulfils this legacy Central Store requisition.
+
+        The current schema records the requesting store but not a separate source
+        store. Until the source-store field is added by an authorized migration,
+        existing requisitions are fulfilled by the configured Central Store.
+        This helper deliberately keeps that assumption in one place.
+        """
+        source_store = await self.session.scalar(
+            select(Store)
+            .join(Office, Office.id == Store.office_id)
+            .where(
+                Store.store_type == "CENTRAL",
+                Store.is_active.is_(True),
+                Office.office_type == "DIRECTORATE",
+            )
+            .order_by(Store.id)
+            .limit(1)
+        )
+        if source_store is None:
+            raise HTTPException(409, "Central Store is not configured")
+        return source_store
 
     async def approve_central(self, requisition_id: int, payload: CentralApprovalRequest, actor_id: int):
         user = await self.auth.require_permission(actor_id, "REQUISITION_APPROVE_CENTRAL")

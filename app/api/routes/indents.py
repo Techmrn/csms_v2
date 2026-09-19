@@ -59,7 +59,11 @@ async def list_indents(
 
 @router.get("/{indent_id}", response_model=IndentResponse)
 async def get_indent(indent_id: int, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
-    return await IndentService(session).get(indent_id)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "INDENT_VIEW")
+    indent = await IndentService(session).get(indent_id)
+    await auth.require_store_visibility(current_user.id, indent.store_id)
+    return indent
 
 
 @router.post("/{indent_id}/approve", response_model=IndentResponse)

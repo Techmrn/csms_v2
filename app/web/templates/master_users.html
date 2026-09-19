@@ -6,8 +6,8 @@
 <div class="card"><h2>Create User</h2><form method="post" action="/app/admin/users/new" class="grid cols-3" style="margin-top:14px">
 <label>User Code<input name="code" placeholder="EMP-0001" required></label><label>Username<input name="username" required></label><label>Full Name<input name="full_name" required></label>
 <label>Designation<input name="designation"></label><label>Email<input type="email" name="email"></label><label>Mobile<input name="mobile"></label>
-<label>Office<select name="office_id"><option value="">— None —</option>{% for office in offices %}<option value="{{ office.id }}">{{ office.name }}</option>{% endfor %}</select></label>
-<label>Section<select name="section_id"><option value="">— None —</option>{% for section in sections %}<option value="{{ section.id }}">{{ section.name }}</option>{% endfor %}</select></label>
+<label>Office<select id="create_office_id" name="office_id" onchange="filterSections('create')"><option value="">— None —</option>{% for office in offices %}<option value="{{ office.id }}">{{ office.name }}</option>{% endfor %}</select></label>
+<label>Section<select id="create_section_id" name="section_id"><option value="">— None —</option>{% for section in sections %}<option value="{{ section.id }}" data-office-id="{{ section.office_id }}">{{ section.name }}</option>{% endfor %}</select></label>
 <label>Password<input type="password" name="password" minlength="8" required></label>
 <fieldset class="choice-group"><legend>Roles <span class="field-help">Select every role the user should hold. Multiple roles are supported.</span></legend>{% for role in roles %}<label class="choice"><input type="checkbox" name="role_ids" value="{{ role.id }}"> {{ role.name }}</label>{% endfor %}</fieldset>
 <fieldset class="choice-group"><legend>Store Access <span class="field-help">Select every store this user may access.</span></legend>{% for store in stores %}<label class="choice"><input type="checkbox" name="store_ids" value="{{ store.id }}"> {{ store.name }}</label>{% endfor %}</fieldset>
@@ -16,8 +16,8 @@
 {% if edit_user %}<div class="card" style="margin-top:18px"><h2>Edit {{ edit_user.full_name }}</h2><form method="post" action="/app/admin/users/{{ edit_user.id }}/save" class="grid cols-3">
 <label>User Code<input value="{{ edit_user.code }}" disabled></label><label>Username<input value="{{ edit_user.username }}" disabled></label><label>Full Name<input name="full_name" value="{{ edit_user.full_name }}" required></label>
 <label>Designation<input name="designation" value="{{ edit_user.designation or '' }}"></label><label>Email<input name="email" value="{{ edit_user.email or '' }}"></label><label>Mobile<input name="mobile" value="{{ edit_user.mobile or '' }}"></label>
-<label>Office<select name="office_id"><option value="">— None —</option>{% for office in offices %}<option value="{{ office.id }}" {% if edit_user.office_id==office.id %}selected{% endif %}>{{ office.name }}</option>{% endfor %}</select></label>
-<label>Section<select name="section_id"><option value="">— None —</option>{% for section in sections %}<option value="{{ section.id }}" {% if edit_user.section_id==section.id %}selected{% endif %}>{{ section.name }}</option>{% endfor %}</select></label>
+<label>Office<select id="edit_office_id" name="office_id" onchange="filterSections('edit')"><option value="">— None —</option>{% for office in offices %}<option value="{{ office.id }}" {% if edit_user.office_id==office.id %}selected{% endif %}>{{ office.name }}</option>{% endfor %}</select></label>
+<label>Section<select id="edit_section_id" name="section_id"><option value="">— None —</option>{% for section in sections %}<option value="{{ section.id }}" data-office-id="{{ section.office_id }}" {% if edit_user.section_id==section.id %}selected{% endif %}>{{ section.name }}</option>{% endfor %}</select></label>
 <label>Reset Password<input type="password" name="password" minlength="8" placeholder="Leave blank to keep current"></label>
 <fieldset class="choice-group"><legend>Roles <span class="field-help">Select every role the user should hold.</span></legend>{% for role in roles %}<label class="choice"><input type="checkbox" name="role_ids" value="{{ role.id }}" {% if role in edit_user.roles %}checked{% endif %}> {{ role.name }}</label>{% endfor %}</fieldset>
 <fieldset class="choice-group"><legend>Store Access <span class="field-help">Select every store this user may access.</span></legend>{% for store in stores %}<label class="choice"><input type="checkbox" name="store_ids" value="{{ store.id }}" {% if store in edit_user.stores %}checked{% endif %}> {{ store.name }}</label>{% endfor %}</fieldset>
@@ -25,4 +25,33 @@
 <div><button class="button primary" type="submit">Update User</button><a class="button" href="/app/admin/users">Cancel</a></div>
 </form></div>{% endif %}
 <div class="card table-card" style="margin-top:18px"><table><thead><tr><th>Code</th><th>User</th><th>Role(s)</th><th>Office</th><th>Stores</th><th>Status</th><th></th></tr></thead><tbody>{% for user in users %}<tr><td>{{ user.code }}</td><td><strong>{{ user.full_name }}</strong><div class="muted">{{ user.username }}</div></td><td>{% for role in user.roles %}<span class="badge">{{ role.code }}</span> {% endfor %}</td><td>{{ user.office.name if user.office else '—' }}</td><td>{% for store in user.stores %}<span class="badge">{{ store.code }}</span> {% endfor %}</td><td>{{ 'Active' if user.is_active else 'Inactive' }}</td><td><a class="button" href="/app/admin/users/{{ user.id }}">View</a> <a class="button" href="/app/admin/users?edit={{ user.id }}">Edit</a></td></tr>{% else %}<tr><td colspan="7" class="empty">No users</td></tr>{% endfor %}</tbody></table></div>
+<script>
+function filterSections(prefix) {
+  const officeSelect = document.getElementById(prefix + '_office_id');
+  const sectionSelect = document.getElementById(prefix + '_section_id');
+  if (!officeSelect || !sectionSelect) return;
+  const officeId = officeSelect.value;
+  let currentValid = false;
+  sectionSelect.querySelectorAll('option[data-office-id]').forEach(opt => {
+    const belongs = Boolean(officeId && opt.dataset.officeId === officeId);
+    opt.hidden = !belongs;
+    opt.disabled = !belongs;
+    if (belongs && opt.value === sectionSelect.value) {
+      currentValid = true;
+    }
+  });
+  if (!officeId || !currentValid) {
+    if (sectionSelect.value !== '') {
+      sectionSelect.value = '';
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  filterSections('create');
+  if (document.getElementById('edit_office_id')) {
+    filterSections('edit');
+  }
+});
+</script>
 {% endblock %}

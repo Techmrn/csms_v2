@@ -15,7 +15,6 @@ async def dev_tokens(client):
     tokens={}
     for username in users:
         response=await client.post("/api/auth/token", data={"username":username,"password":"Password@1"})
-        if response.status_code==200:
-            tokens[username]=response.json()["access_token"]
+        assert response.status_code == 200, f"Failed to authenticate expected development user {username}"
+        tokens[username]=response.json()["access_token"]
     return tokens
-

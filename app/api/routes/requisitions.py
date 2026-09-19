@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
@@ -30,7 +30,14 @@ async def list_requisitions(
 ):
     auth = AuthorizationService(session)
     await auth.require_permission(current_user.id, "REQUISITION_VIEW")
-    scoped = await auth.scoped_store_ids(current_user.id, requesting_store_id)
+    if requesting_store_id is None:
+        try:
+            await auth.require_permission(current_user.id, "REQUISITION_APPROVE_CENTRAL")
+            scoped = None
+        except HTTPException:
+            scoped = await auth.scoped_store_ids(current_user.id, requesting_store_id)
+    else:
+        scoped = await auth.scoped_store_ids(current_user.id, requesting_store_id)
     service = RequisitionService(session)
     if scoped is None:
         return await service.list(None, status)
@@ -42,7 +49,14 @@ async def list_requisitions(
 
 @router.get("/{requisition_id}", response_model=RequisitionResponse)
 async def get_requisition(requisition_id: int, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
-    return await RequisitionService(session).get(requisition_id)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "REQUISITION_VIEW")
+    requisition = await RequisitionService(session).get(requisition_id)
+    try:
+        await auth.require_permission(current_user.id, "REQUISITION_APPROVE_CENTRAL")
+    except HTTPException:
+        await auth.require_store_visibility(current_user.id, requisition.requesting_store_id)
+    return requisition
 
 
 @router.post("/{requisition_id}/approve-branch", response_model=RequisitionResponse)

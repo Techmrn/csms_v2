@@ -93,7 +93,7 @@ async def test_asset_phase2_issue_duplicate_and_return(client, dev_tokens):
     )
     assert issue.status_code == 200, issue.text
     issue_json = issue.json()
-    assert Decimal(str(issue_json["lines"][0]["quantity"])) == 2
+    assert float(issue_json["lines"][0]["quantity"]) == 2
     issue_id = issue_json["id"]
 
     # Cannot reuse an already-assigned asset.
@@ -128,7 +128,8 @@ async def test_asset_phase2_issue_duplicate_and_return(client, dev_tokens):
         }, headers=headers,
     )
     assert ret.status_code == 201, ret.text
-    assert (await client.post(f"/api/returns/{ret.json()['id']}/verify", headers=headers)).status_code == 200
+    verify_headers = {"Authorization": f"Bearer {dev_tokens['dev_assistant_sk']}"}
+    assert (await client.post(f"/api/returns/{ret.json()['id']}/verify", headers=verify_headers)).status_code == 200
     posted = await client.post(f"/api/returns/{ret.json()['id']}/post", headers=headers)
     assert posted.status_code == 200, posted.text
 

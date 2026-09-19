@@ -1,17 +1,54 @@
 {% extends "base.html" %}
 {% block title %}CSMS V2 — New Return{% endblock %}
-{% block page_title %}New Stock Return{% endblock %}
+{% block page_title %}Return to Store{% endblock %}
 {% block content %}
-<div class="card form-card"><form method="post" action="/app/returns/new" class="stack">
-<div class="grid cols-3"><label>Return date<input type="date" name="return_date" value="{{ selected_fy.start_date if selected_fy else '' }}" required></label><label>Financial Year<select name="financial_year_id">{% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and fy.id == selected_fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}</select></label><label>Returning Store<select name="store_id">{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select></label></div>
-<label>Original Issue<select name="original_issue_id" required>{% for issue in issues %}<option value="{{ issue.id }}">{{ issue.issue_no }} — {{ issue.issue_date }} — Store {{ issue.source_store_id }}</option>{% endfor %}</select></label>
-<div class="line-editor" id="return-lines"><div class="line-row header"><span>Original Issue Line ID</span><span>Return quantity</span><span>Asset IDs</span><span>Remarks</span><span></span></div>
-<div class="line-row return-line"><input name="original_issue_line_id" type="number" min="1"><input name="quantity" type="number" min="0.001" step="0.001"><input name="asset_ids" placeholder="Asset IDs, comma-separated"><input name="line_remarks"><button type="button" class="button" onclick="removeReturnRow(this)">Remove</button></div></div>
-<div class="grid cols-2"><label>Reason<textarea name="reason" rows="2" required></textarea></label><label>Remarks<textarea name="remarks" rows="2"></textarea></label></div>
-<div class="form-actions"><button type="button" class="button" onclick="addReturnRow()">+ Add row</button><a class="button" href="/app/returns">Cancel</a><button class="button primary" type="submit">Create return</button></div>
+<div class="context-bar"><div><div class="context-title">Return issued material or legacy/manual holdings</div><div class="muted">Select a CSMS issue when one exists. Use Legacy / Manual for items issued before CSMS.</div></div></div>
+<div class="card form-card">
+<form method="post" action="/app/returns/new" class="stack">
+<div class="grid cols-3">
+<label>Return date<input type="date" name="return_date" value="{{ selected_fy.start_date if selected_fy else '' }}" required></label>
+<label>Financial Year<select name="financial_year_id">{% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and fy.id == selected_fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}</select></label>
+<label>Return Store<select name="store_id" required>{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and store.id == selected_store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select></label>
+</div>
+<div class="grid cols-2">
+<label>Return source
+<select id="return_type" name="return_type" onchange="toggleReturnType()">
+<option value="CSMS_ISSUE">Against CSMS Issue</option><option value="LEGACY">Legacy / Manual Return</option>
+</select></label>
+<label>Condition<select name="condition"><option value="USABLE">Usable</option><option value="DAMAGED">Damaged</option><option value="UNSERVICEABLE">Unserviceable</option></select></label>
+</div>
+<div id="issue-section">
+<label>Issued transaction
+<select id="original_issue_id" name="original_issue_id" onchange="loadIssueLines()"><option value="">Select issued transaction</option>{% for issue in issues %}<option value="{{ issue.id }}">{{ issue.issue_no }} — {{ issue.issue_date }} — Section {{ issue.destination_section_id or 'Office' }}</option>{% endfor %}</select></label>
+<div class="notice">Choose the issued transaction above. The line selector below uses the original issue line; you do not need to remember database IDs.</div>
+</div>
+<div id="legacy-section" hidden>
+<div class="notice"><strong>Legacy / Manual Return</strong> is for material already issued before CSMS. No CSMS Issue ID is required.</div>
+<label>Manual Issue / Register Reference <input name="manual_reference" maxlength="100" placeholder="Optional old manual register number"></label>
+</div>
+<div class="line-editor" id="return-lines">
+<div class="line-row header"><span>Item / Issue line</span><span>Quantity</span><span>Unit</span><span>Asset IDs</span><span>Remarks</span><span></span></div>
+<div class="line-row return-line">
+<select name="item_id" class="legacy-item"><option value="">Select item</option>{% for item in items %}<option value="{{ item.id }}">{{ item.code }} — {{ item.name }}</option>{% endfor %}</select>
+<input name="original_issue_line_id" type="number" min="1" placeholder="Issue line ID">
+<input name="quantity" type="number" min="0.001" step="0.001" required>
+<select name="unit_id">{% for unit in units %}<option value="{{ unit.id }}">{{ unit.code }}</option>{% endfor %}</select>
+<input name="asset_ids" placeholder="Asset IDs, comma-separated">
+<input name="line_remarks" placeholder="Line remarks">
+<button type="button" class="button" onclick="removeReturnRow(this)">Remove</button>
+</div></div>
+<div class="grid cols-2">
+<label>Returning Office<input name="returning_office_id" type="number" value="{{ user.office_id or '' }}" {% if is_section_user %}readonly{% endif %} required></label>
+<label>Returning Section<input name="returning_section_id" type="number" value="{{ user.section_id or '' }}" {% if is_section_user %}readonly{% endif %}></label>
+</div>
+<label>Reason<textarea name="reason" rows="2" required placeholder="Excess, no longer required, damaged, transfer to another section, etc."></textarea></label>
+<label>Remarks<textarea name="remarks" rows="2"></textarea></label>
+<div class="form-actions"><button type="button" class="button" onclick="addReturnRow()">+ Add row</button><a class="button" href="/app/returns">Cancel</a><button class="button primary" type="submit">Record Return</button></div>
 </form></div>
 <script>
+function toggleReturnType(){const legacy=document.getElementById('return_type').value==='LEGACY';document.getElementById('issue-section').hidden=legacy;document.getElementById('legacy-section').hidden=!legacy;document.querySelectorAll('.legacy-item').forEach(e=>e.closest('.return-line').classList.toggle('legacy-mode',legacy));}
 function removeReturnRow(btn){const rows=document.querySelectorAll('#return-lines .return-line');if(rows.length>1)btn.closest('.return-line').remove();}
-function addReturnRow(){const first=document.querySelector('#return-lines .return-line');const c=first.cloneNode(true);c.querySelectorAll('input').forEach(i=>i.value='');document.querySelector('#return-lines').appendChild(c);}
+function addReturnRow(){const first=document.querySelector('#return-lines .return-line');const c=first.cloneNode(true);c.querySelectorAll('input').forEach(i=>i.value='');c.querySelectorAll('select').forEach(s=>s.selectedIndex=0);document.querySelector('#return-lines').appendChild(c);toggleReturnType();}
+toggleReturnType();
 </script>
 {% endblock %}

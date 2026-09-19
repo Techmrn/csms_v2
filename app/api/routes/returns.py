@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
@@ -29,6 +29,7 @@ async def list_returns(
 ):
     auth = AuthorizationService(session)
     await auth.require_permission(current_user.id, "STOCK_RETURN_VIEW")
+    user = await session.get(User, current_user.id)
     scoped = await auth.scoped_store_ids(current_user.id, store_id)
     service = StockReturnService(session)
     if scoped is None:
@@ -36,12 +37,24 @@ async def list_returns(
     rows = []
     for sid in scoped:
         rows.extend(await service.list(sid, status))
+    if not rows and user is not None and user.section_id is not None:
+        all_rows = await service.list(store_id, status) if store_id is not None else await service.list(None, status)
+        rows = [row for row in all_rows if row.returning_section_id == user.section_id]
     return rows
 
 
 @router.get("/{return_id}", response_model=StockReturnResponse)
 async def get_return(return_id: int, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
-    return await StockReturnService(session).get(return_id)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "STOCK_RETURN_VIEW")
+    row = await StockReturnService(session).get(return_id)
+    visible = await auth.get_visible_stores(current_user.id)
+    if visible is not None and row.store_id not in visible:
+        # Section users may view their own section returns without store assignment.
+        user = await session.get(User, current_user.id)
+        if user is None or row.returning_section_id != user.section_id:
+            raise HTTPException(403, "User is not authorized to access this return")
+    return row
 
 
 @router.post("/{return_id}/verify", response_model=StockReturnResponse)

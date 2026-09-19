@@ -32,14 +32,20 @@ class StockReturn(TimestampMixin, Base):
     store_id: Mapped[int] = mapped_column(
         ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False
     )
-    original_issue_id: Mapped[int] = mapped_column(
-        ForeignKey("issues.id", ondelete="RESTRICT"), nullable=False
+    original_issue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="RESTRICT"), nullable=True
     )
     returning_office_id: Mapped[int | None] = mapped_column(
         ForeignKey("offices.id", ondelete="RESTRICT"), nullable=True
     )
     returning_section_id: Mapped[int | None] = mapped_column(
         ForeignKey("sections.id", ondelete="RESTRICT"), nullable=True
+    )
+    return_type: Mapped[str] = mapped_column(String(20), nullable=False, default="CSMS_ISSUE")
+    manual_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    condition: Mapped[str] = mapped_column(String(20), nullable=False, default="USABLE")
+    returning_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="OPEN")
     reason: Mapped[str] = mapped_column(Text, nullable=False)
@@ -75,8 +81,8 @@ class StockReturnLine(Base):
     return_id: Mapped[int] = mapped_column(
         ForeignKey("stock_returns.id", ondelete="CASCADE"), nullable=False
     )
-    original_issue_line_id: Mapped[int] = mapped_column(
-        ForeignKey("issue_lines.id", ondelete="RESTRICT"), nullable=False
+    original_issue_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("issue_lines.id", ondelete="RESTRICT"), nullable=True
     )
     item_id: Mapped[int] = mapped_column(
         ForeignKey("items.id", ondelete="RESTRICT"), nullable=False

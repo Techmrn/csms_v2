@@ -4,7 +4,7 @@
 {% block content %}
 <div class="card form-card">
 <form method="post" action="/app/petty-purchases/new" class="stack">
-<div class="notice"><strong>Petty Purchase is for consumables.</strong> The indent field is no longer mandatory. For an immediate issue, select a destination office/section; CSMS creates the internal issue document automatically when the purchase is posted.</div>
+<div class="notice"><strong>Petty Purchase is for consumables.</strong> Select an existing approved/manual indent when the purchase is for an end-user requirement. Do not type an indent ID. For a genuinely urgent purchase without an indent, use the no-indent option and provide the immediate issue destination when applicable.</div>
 <div class="grid cols-3">
 <label>Date <span class="field-help">Date of the petty purchase.</span><input type="date" name="purchase_date" value="{{ selected_fy.start_date if selected_fy else '' }}" required></label>
 <label>Financial Year <span class="field-help">Financial year for stock posting.</span><select name="financial_year_id">{% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and fy.id == selected_fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}</select></label>
@@ -21,7 +21,11 @@
 </div>
 <div class="line-editor" id="petty-lines"><div class="line-row header"><span>Item</span><span>Temporary item name</span><span>Qty</span><span>Unit</span><span>Price</span><span>Immediate issue</span><span></span></div>
 <div class="line-row petty-line"><select name="item_id"><option value="">Use temporary item</option>{% for item in items if item.category and item.category.type == 'CONSUMABLE' %}<option value="{{ item.id }}">{{ item.code }} — {{ item.name }}</option>{% endfor %}</select><input name="temporary_item_name" placeholder="Only for one-off item"><input name="quantity" type="number" min="0.001" step="0.001"><select name="unit_id">{% for unit in units %}<option value="{{ unit.id }}">{{ unit.code }}</option>{% endfor %}</select><input name="unit_price" type="number" min="0" step="0.01"><input name="immediate_issue_quantity" type="number" min="0" step="0.001" value="0"><button type="button" class="button" onclick="removePettyRow(this)">Remove</button></div></div>
-<label>Optional existing indent ID <span class="field-help">Leave blank in the normal petty-purchase workflow. Use this only when an approved indent already exists.</span><input name="indent_id" type="number" min="1"></label>
+<div class="card" style="padding:1rem">
+<label>Purchase against indent <span class="field-help">Select the approved/open indent from the list. The system records the relationship; no ID entry is required.</span>
+<select id="indent_id" name="indent_id" onchange="loadIndent(this.value)"><option value="">No existing indent — standalone urgent purchase</option>{% for indent in approved_indents %}<option value="{{ indent.id }}" data-office="{{ indent.office_id }}" data-section="{{ indent.section_id or '' }}">{{ indent.indent_no }} — {{ indent.indent_date }} — {{ indent.lines|length }} item(s)</option>{% endfor %}</select></label>
+<div id="indent-preview" class="notice" hidden></div>
+</div>
 <label>Remarks <span class="field-help">Additional purchase or issue notes.</span><textarea name="remarks" rows="2"></textarea></label>
 <div class="form-actions"><button type="button" class="button" onclick="addPettyRow()">+ Add row</button><a class="button" href="/app/petty-purchases">Cancel</a><button class="button primary" type="submit">Create petty purchase</button></div>
 </form></div>
@@ -29,6 +33,7 @@
 function filterSections(){const office=document.getElementById('issue_office_id').value;document.querySelectorAll('#issue_section_id option[data-office-id]').forEach(o=>o.hidden=!office||o.dataset.officeId!==office);const s=document.getElementById('issue_section_id');if(s.value && s.options[s.selectedIndex].hidden)s.value='';}
 function removePettyRow(btn){const rows=document.querySelectorAll('#petty-lines .petty-line');if(rows.length>1)btn.closest('.petty-line').remove();}
 function addPettyRow(){const first=document.querySelector('#petty-lines .petty-line');const c=first.cloneNode(true);c.querySelectorAll('input').forEach(i=>i.value=(i.name==='immediate_issue_quantity')?'0':'');c.querySelectorAll('select').forEach(s=>s.selectedIndex=0);document.querySelector('#petty-lines').appendChild(c);}
+function loadIndent(id){const preview=document.getElementById('indent-preview');if(!id){preview.hidden=true;preview.textContent='';return;}const opt=document.querySelector('#indent_id option[value="'+id+'"]');preview.hidden=false;preview.textContent='Selected indent: '+opt.textContent+' — the storekeeper can now enter the actual purchase details. The linked indent will be used for the issue workflow.';}
 filterSections();
 </script>
 {% endblock %}

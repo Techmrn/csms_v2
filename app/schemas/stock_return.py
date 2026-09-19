@@ -6,7 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class StockReturnLineCreate(BaseModel):
-    original_issue_line_id: int
+    original_issue_line_id: int | None = None
+    item_id: int | None = None
+    unit_id: int | None = None
     quantity: Decimal = Field(gt=0)
     asset_ids: list[int] | None = None
     remarks: str | None = None
@@ -16,7 +18,11 @@ class StockReturnCreate(BaseModel):
     return_date: date
     financial_year_id: int
     store_id: int
-    original_issue_id: int
+    original_issue_id: int | None = None
+    return_type: str = Field(default="CSMS_ISSUE", pattern="^(CSMS_ISSUE|LEGACY)$")
+    manual_reference: str | None = Field(default=None, max_length=100)
+    condition: str = Field(default="USABLE", pattern="^(USABLE|DAMAGED|UNSERVICEABLE)$")
+    returning_user_id: int | None = None
     returning_office_id: int | None = None
     returning_section_id: int | None = None
     reason: str = Field(min_length=1)
@@ -26,7 +32,7 @@ class StockReturnCreate(BaseModel):
 
 class StockReturnLineResponse(BaseModel):
     id: int
-    original_issue_line_id: int
+    original_issue_line_id: int | None
     item_id: int
     quantity: Decimal
     unit_id: int
@@ -40,7 +46,11 @@ class StockReturnResponse(BaseModel):
     return_date: date
     financial_year_id: int
     store_id: int
-    original_issue_id: int
+    original_issue_id: int | None = None
+    return_type: str = Field(default="CSMS_ISSUE", pattern="^(CSMS_ISSUE|LEGACY)$")
+    manual_reference: str | None = Field(default=None, max_length=100)
+    condition: str = Field(default="USABLE", pattern="^(USABLE|DAMAGED|UNSERVICEABLE)$")
+    returning_user_id: int | None = None
     returning_office_id: int | None
     returning_section_id: int | None
     status: str

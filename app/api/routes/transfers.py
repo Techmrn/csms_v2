@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
@@ -38,7 +38,13 @@ async def list_transfers(
 
 @router.get("/{transfer_id}", response_model=TransferResponse)
 async def get_transfer(transfer_id: int, current_user: User = Depends(get_current_user), session: AsyncSession = Depends(get_db_session)):
-    return await TransferService(session).get(transfer_id)
+    auth = AuthorizationService(session)
+    await auth.require_permission(current_user.id, "STOCK_TRANSFER_VIEW")
+    transfer = await TransferService(session).get(transfer_id)
+    visible = await auth.get_visible_stores(current_user.id)
+    if visible is not None and transfer.source_store_id not in visible and transfer.destination_store_id not in visible:
+        raise HTTPException(403, "User is not authorized to access this transfer")
+    return transfer
 
 
 @router.post("/requisitions/{requisition_id}/dispatch", response_model=TransferResponse | None)

@@ -6,28 +6,27 @@ from httpx import ASGITransport, AsyncClient
 from app.main import app
 
 
-def get_all_paths(routes, prefix=""):
-    paths = set()
-    for r in routes:
-        if hasattr(r, "path") and r.path is not None:
-            paths.add(prefix + r.path)
-        if hasattr(r, "routes"):
-            p = prefix + (getattr(r, "prefix", "") or "")
-            paths.update(get_all_paths(r.routes, p))
-        elif hasattr(r, "original_router"):
-            p = prefix + (getattr(r.include_context, "prefix", "") or "")
-            paths.update(get_all_paths(r.original_router.routes, p))
-    return paths
-
-
 @pytest.mark.asyncio
 async def test_web_routes_are_registered():
-    routes = get_all_paths(app.routes)
+    from starlette.routing import Mount, Route
+    def get_routes(routes, prefix=""):
+        result = set()
+        for route in routes:
+            if hasattr(route, "path") and hasattr(route, "endpoint"):
+                result.add(prefix + route.path)
+            if hasattr(route, "routes"):
+                p = getattr(route, "path", "") or ""
+                result.update(get_routes(route.routes, prefix + p))
+            elif hasattr(route, "original_router") and hasattr(route.original_router, "routes"):
+                p = getattr(route, "path", "") or getattr(getattr(route, "include_context", None), "prefix", "") or ""
+                result.update(get_routes(route.original_router.routes, prefix + p))
+        return result
+        
+    routes = get_routes(app.routes)
     assert "/login" in routes
     assert "/app" in routes
     assert "/app/stock" in routes
     assert "/app/assets" in routes
-
 
 
 @pytest.mark.asyncio
