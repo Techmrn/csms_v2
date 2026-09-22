@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from pwdlib import PasswordHash
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -209,8 +209,15 @@ class MasterAdminService:
         await self.session.flush()
         return unit
 
-    async def list_items(self):
+    async def list_items(self, search: str | None = None, category_id: int | None = None, limit: int | None = None):
         stmt = select(Item).options(selectinload(Item.category), selectinload(Item.unit)).order_by(Item.name)
+        if category_id:
+            stmt = stmt.where(Item.category_id == category_id)
+        if search:
+            pattern = f"%{search.strip()}%"
+            stmt = stmt.where(or_(Item.name.ilike(pattern), Item.code.ilike(pattern)))
+        if limit:
+            stmt = stmt.limit(limit)
         return list((await self.session.scalars(stmt)).all())
 
     async def create_item(self, data: dict):

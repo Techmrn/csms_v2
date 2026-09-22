@@ -26,6 +26,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from fastapi.middleware.gzip import GZipMiddleware
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 from fastapi.responses import RedirectResponse, JSONResponse
 
 app.include_router(api_router, prefix="/api")
@@ -56,7 +60,7 @@ async def performance_and_cache_middleware(request: Request, call_next):
     duration = time.perf_counter() - start
     response.headers["X-Process-Time"] = f"{duration:.3f}s"
     if request.url.path.startswith("/static/"):
-        response.headers["Cache-Control"] = "public, max-age=86400"
+        response.headers["Cache-Control"] = "public, max-age=604800, immutable"
     if not request.url.path.startswith("/api/health"):
         print(f"[{request.method}] {request.url.path} -> {response.status_code} ({duration:.3f}s)")
     return response

@@ -402,10 +402,17 @@ async def update_unit_web(unit_id: int, name: Annotated[str, Form()], symbol: An
 @router.get("/app/admin/items", include_in_schema=False)
 async def admin_items_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    await require_master_user(current_user, session); service=MasterAdminService(session); items=await service.list_items(); categories=await service.list_categories(); units=await service.list_units()
-    edit_id=request.query_params.get("edit")
-    edit_item=await session.get(Item,int(edit_id)) if edit_id else None
-    return render(request, "master_items.html", current_user, items=items, categories=categories, units=units, edit_item=edit_item)
+    await require_master_user(current_user, session)
+    service = MasterAdminService(session)
+    search = request.query_params.get("search", "").strip() or None
+    cat_param = request.query_params.get("category_id")
+    category_id = int(cat_param) if cat_param and cat_param.isdigit() else None
+    items = await service.list_items(search=search, category_id=category_id)
+    categories = await service.list_categories()
+    units = await service.list_units()
+    edit_id = request.query_params.get("edit")
+    edit_item = await session.get(Item, int(edit_id)) if edit_id and edit_id.isdigit() else None
+    return render(request, "master_items.html", current_user, items=items, categories=categories, units=units, edit_item=edit_item, search=search, selected_category_id=category_id)
 
 
 @router.post("/app/admin/items/new", include_in_schema=False)
