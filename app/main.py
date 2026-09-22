@@ -46,6 +46,20 @@ WEB_ROOT = Path(__file__).resolve().parent / "web"
 STATIC_DIR = WEB_ROOT / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+import time
+
+
+@app.middleware("http")
+async def performance_and_cache_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration = time.perf_counter() - start
+    response.headers["X-Process-Time"] = f"{duration:.3f}s"
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    if not request.url.path.startswith("/api/health"):
+        print(f"[{request.method}] {request.url.path} -> {response.status_code} ({duration:.3f}s)")
+    return response
 
 
 @app.middleware("http")

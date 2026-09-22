@@ -13,8 +13,11 @@ if "asyncpg" in settings.database_url:
 
 engine = create_async_engine(
     settings.database_url,
-    echo=settings.debug,
+    echo=False,
     pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=5,
+    pool_recycle=1800,
     connect_args=connect_args,
 )
 
