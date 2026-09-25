@@ -4,7 +4,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.security.auth import get_current_user
 from app.models.user import User
-from app.schemas.indent import IndentCreate, IndentResponse, IssueFinalizeRequest, IssueResponse, ManualIndentCreate, ManualIndentIssueResponse
+from app.schemas.indent import (
+    IndentApprovalRequest,
+    IndentCreate,
+    IndentResponse,
+    IssueFinalizeRequest,
+    IssueResponse,
+    ManualIndentCreate,
+    ManualIndentIssueResponse,
+)
 from app.services.indent import IndentService
 from app.services.issue import IssueService
 from app.services.authorization import AuthorizationService
@@ -69,10 +77,11 @@ async def get_indent(indent_id: int, current_user: User = Depends(get_current_us
 @router.post("/{indent_id}/approve", response_model=IndentResponse)
 async def approve_online_indent(
     indent_id: int,
+    payload: IndentApprovalRequest | None = None,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
-    return await IndentService(session).approve_online(indent_id, current_user.id)
+    return await IndentService(session).approve_online(indent_id, current_user.id, payload)
 
 
 @router.post("/{indent_id}/finalize-issue", response_model=IssueResponse)

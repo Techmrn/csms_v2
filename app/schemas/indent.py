@@ -44,12 +44,23 @@ class ManualIndentCreate(BaseModel):
     lines: list[ManualIndentLineCreate] = Field(min_length=1)
 
 
+class IndentApprovalLine(BaseModel):
+    indent_line_id: int
+    approved_quantity: Decimal = Field(ge=0)
+
+
+class IndentApprovalRequest(BaseModel):
+    remarks: str | None = None
+    lines: list[IndentApprovalLine] | None = None
+
+
 class IndentLineResponse(BaseModel):
     id: int
     item_id: int
     requested_quantity: Decimal
-    issued_quantity: Decimal | None
-    remarks: str | None
+    approved_quantity: Decimal | None = None
+    issued_quantity: Decimal | None = None
+    remarks: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 

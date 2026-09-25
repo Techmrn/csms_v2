@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.office import Office
     from app.models.section import Section
     from app.models.store import Store
+    from app.models.user import User
 
 
 class Indent(TimestampMixin, Base):
@@ -54,6 +55,10 @@ class Indent(TimestampMixin, Base):
     lines: Mapped[list["IndentLine"]] = relationship(
         back_populates="indent", cascade="all, delete-orphan", lazy="selectin"
     )
+    store: Mapped["Store"] = relationship(lazy="selectin")
+    office: Mapped["Office"] = relationship(lazy="selectin")
+    section: Mapped["Section | None"] = relationship(lazy="selectin")
+    creator: Mapped["User | None"] = relationship(foreign_keys=[created_by], lazy="selectin")
 
 
 class IndentLine(Base):
@@ -61,6 +66,10 @@ class IndentLine(Base):
     __table_args__ = (
         UniqueConstraint("indent_id", "item_id", name="uq_indent_lines_indent_item"),
         CheckConstraint("requested_quantity > 0", name="requested_quantity_positive"),
+        CheckConstraint(
+            "approved_quantity is null or (approved_quantity >= 0 and approved_quantity <= requested_quantity)",
+            name="approved_quantity_valid",
+        ),
         CheckConstraint(
             "issued_quantity is null or issued_quantity >= 0",
             name="issued_quantity_nonnegative",
@@ -77,8 +86,9 @@ class IndentLine(Base):
     )
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="RESTRICT"), nullable=False)
     requested_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False)
+    approved_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3), nullable=True)
     issued_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3), nullable=True)
     remarks: Mapped[str | None] = mapped_column(nullable=True)
 
     indent: Mapped[Indent] = relationship(back_populates="lines")
-    item: Mapped["Item"] = relationship()
+    item: Mapped["Item"] = relationship(lazy="selectin")

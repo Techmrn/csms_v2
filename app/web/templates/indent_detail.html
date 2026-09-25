@@ -2,29 +2,124 @@
 {% block title %}CSMS V2 — {{ indent.indent_no }}{% endblock %}
 {% block page_title %}{{ indent.indent_no }}{% endblock %}
 {% block content %}
-<div class="grid cols-3">
-  <div class="card"><div class="stat-label">Document</div><div class="stat-value">{{ indent.indent_no }}</div></div>
-  <div class="card"><div class="stat-label">Status</div><div class="stat-value">{{ indent.status }}</div></div>
-  <div class="card"><div class="stat-label">Issue</div><div class="stat-value">{{ issue.issue_no if issue else '—' }}</div></div>
+<div class="context-bar">
+  <div>
+    <div class="context-title">{% if indent.request_source == 'ONLINE' %}Online Indent {{ indent.indent_no }}{% else %}Manual Indent {{ indent.indent_no }}{% endif %}</div>
+    <div class="muted">{% if indent.request_source == 'ONLINE' %}Online indents require controlling officer approval before stock is issued.{% else %}Manual physical indents are finalized when saved.{% endif %}</div>
+  </div>
+  <a class="button" href="{{ '/app/online-indents' if indent.request_source == 'ONLINE' else '/app/indents' }}">Back</a>
 </div>
+
+<div class="card">
+  <div class="grid cols-4">
+    <div><strong>Document</strong><br>{{ indent.indent_no }}</div>
+    <div><strong>Date</strong><br>{{ indent.indent_date }}</div>
+    <div><strong>Store</strong><br>{{ indent.store.name if indent.store else indent.store_id }}</div>
+    <div><strong>Status</strong><br><span class="badge">{{ indent.status }}</span></div>
+    <div><strong>Office</strong><br>{{ indent.office.name if indent.office else indent.office_id }}</div>
+    <div><strong>Section</strong><br>{{ indent.section.name if indent.section else (indent.section_id or '—') }}</div>
+    <div><strong>Created By</strong><br>{{ indent.creator.full_name or indent.creator.username if indent.creator else '—' }}</div>
+    <div><strong>Issue Document</strong><br>{{ issue.issue_no if issue else '—' }}</div>
+  </div>
+  {% if indent.remarks %}
+  <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-color,#e5e7eb);">
+    <strong>Remarks / Purpose:</strong> {{ indent.remarks }}
+  </div>
+  {% endif %}
+</div>
+
+{% if can_approve %}
+<div class="card" style="margin-top:18px">
+  <div class="section-head">
+    <div>
+      <h2>Review &amp; Approve Online Indent</h2>
+      <div class="muted">Review the requested items and available stock in store. You can modify the approved quantity numbers before approving.</div>
+    </div>
+  </div>
+  <form method="post" action="/app/indents/{{ indent.id }}/approve" class="stack">
+    <div class="table-wrap">
+      <table class="entry-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Requested Quantity</th>
+            <th>Available in Store</th>
+            <th>Approved Quantity (Modify if needed)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in indent.lines %}
+          <tr>
+            <td>
+              <strong>{{ line.item.code if line.item else line.item_id }}</strong> — {{ line.item.name if line.item else '' }}
+              {% if line.item and line.item.unit %}<span class="muted">({{ line.item.unit.code }})</span>{% endif %}
+              <input type="hidden" name="indent_line_id" value="{{ line.id }}">
+            </td>
+            <td><strong>{{ line.requested_quantity }}</strong></td>
+            <td><span class="badge">{{ available.get(line.id, 0) }}</span></td>
+            <td>
+              <input name="approved_quantity" type="number" min="0" max="{{ line.requested_quantity }}" step="0.001" value="{{ line.approved_quantity if line.approved_quantity is not none else line.requested_quantity }}" required style="max-width:180px;">
+              <small class="muted" style="display:block;margin-top:2px;">Max: {{ line.requested_quantity }}</small>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px">
+      <label>Approval Remarks (optional)
+        <input name="approval_remarks" placeholder="Enter approval remarks or notes...">
+      </label>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <a class="button" href="/app/online-indents">Cancel</a>
+      <button class="button primary" type="submit">Approve Indent</button>
+    </div>
+  </form>
+</div>
+{% endif %}
 
 <div class="card" style="margin-top:18px">
   <div class="section-head">
     <div>
-      <h2>Issued Lines</h2>
-      <div class="muted">{% if indent.request_source == 'ONLINE' %}Online indents are approved first and issued by an authorized storekeeper.{% else %}Manual indents are finalized when saved.{% endif %}</div>
+      <h2>Indent Lines</h2>
+      <div class="muted">{% if indent.request_source == 'ONLINE' %}Quantities requested by section user and approved by store controller.{% else %}Manual indent lines.{% endif %}</div>
     </div>
   </div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Item</th><th>Requested</th><th>Issued</th><th>Current Available</th><th>Remarks</th></tr></thead>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Requested</th>
+          {% if indent.request_source == 'ONLINE' %}<th>Approved</th>{% endif %}
+          <th>Issued</th>
+          {% if show_available %}<th>Current Available</th>{% endif %}
+          <th>Remarks</th>
+        </tr>
+      </thead>
       <tbody>
       {% for line in indent.lines %}
       <tr>
-        <td>{{ line.item.code if line.item else line.item_id }} — {{ line.item.name if line.item else '' }}</td>
+        <td>
+          <strong>{{ line.item.code if line.item else line.item_id }}</strong> — {{ line.item.name if line.item else '' }}
+          {% if line.item and line.item.unit %}<span class="muted">({{ line.item.unit.code }})</span>{% endif %}
+        </td>
         <td>{{ line.requested_quantity }}</td>
+        {% if indent.request_source == 'ONLINE' %}
+        <td>
+          {% if line.approved_quantity is not none %}
+            <strong>{{ line.approved_quantity }}</strong>
+            {% if line.approved_quantity < line.requested_quantity %}
+              <span class="badge" style="background:#fff3cd;color:#856404;font-size:11px;">Modified</span>
+            {% endif %}
+          {% else %}
+            <span class="muted">Pending approval</span>
+          {% endif %}
+        </td>
+        {% endif %}
         <td>{{ line.issued_quantity if line.issued_quantity is not none else 0 }}</td>
-        <td>{{ available.get(line.id, 0) }}</td>
+        {% if show_available %}<td>{{ available.get(line.id, 0) }}</td>{% endif %}
         <td>{{ line.remarks or '—' }}</td>
       </tr>
       {% endfor %}
@@ -32,10 +127,55 @@
     </table>
   </div>
   <div class="form-actions" style="margin-top:16px">
-    {% if indent.request_source == 'ONLINE' and indent.status == 'PROCESSING' and 'INDENT_PROCESS' in permissions and not issue %}<a class="button primary" href="/app/indents/{{ indent.id }}?edit_issue=1">Process / Issue</a>{% endif %}
+    {% if indent.request_source == 'ONLINE' and indent.status == 'PROCESSING' and 'INDENT_PROCESS' in permissions and not issue %}
+    <a class="button primary" href="/app/indents/{{ indent.id }}?edit_issue=1">Process / Issue Stock</a>
+    {% endif %}
     <a class="button" href="{{ '/app/online-indents' if indent.request_source == 'ONLINE' else '/app/indents' }}">Back</a>
   </div>
-  {% if indent.request_source == 'ONLINE' and indent.status == 'PROCESSING' and 'INDENT_PROCESS' in permissions and not issue and request.query_params.get('edit_issue') %}
-  <div class="card" style="margin-top:18px"><h2>Issue Online Indent</h2><div class="notice">Enter the actual quantity issued now. Zero or partial quantities are allowed.</div><form method="post" action="/app/indents/{{ indent.id }}/issue" class="stack"><div class="table-wrap"><table class="entry-table"><thead><tr><th>Item</th><th>Requested</th><th>Issued</th><th>Remarks</th></tr></thead><tbody>{% for line in indent.lines %}<tr><td>{{ line.item.code if line.item else line.item_id }} — {{ line.item.name if line.item else '' }}<input type="hidden" name="indent_line_id" value="{{ line.id }}"></td><td>{{ line.requested_quantity }}</td><td><input name="issued_quantity" type="number" min="0" max="{{ line.requested_quantity }}" step="0.001" value="0" required></td><td><input name="issue_line_remarks"></td></tr>{% endfor %}</tbody></table></div><div class="form-actions"><a class="button" href="/app/indents/{{ indent.id }}">Cancel</a><button class="button primary">Post Issue</button></div></form></div>{% endif %}
 </div>
+
+{% if indent.request_source == 'ONLINE' and indent.status == 'PROCESSING' and 'INDENT_PROCESS' in permissions and not issue and request.query_params.get('edit_issue') %}
+<div class="card" style="margin-top:18px">
+  <h2>Issue Online Indent</h2>
+  <div class="notice">Enter the actual quantity issued now. Issue quantity cannot exceed the approved quantity. Zero or partial quantities are allowed.</div>
+  <form method="post" action="/app/indents/{{ indent.id }}/issue" class="stack">
+    <div class="table-wrap">
+      <table class="entry-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Requested</th>
+            <th>Approved</th>
+            <th>Current Available</th>
+            <th>Issued Quantity</th>
+            <th>Line Remarks</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in indent.lines %}
+          {% set max_qty = line.approved_quantity if line.approved_quantity is not none else line.requested_quantity %}
+          <tr>
+            <td>
+              {{ line.item.code if line.item else line.item_id }} — {{ line.item.name if line.item else '' }}
+              <input type="hidden" name="indent_line_id" value="{{ line.id }}">
+            </td>
+            <td>{{ line.requested_quantity }}</td>
+            <td><strong>{{ max_qty }}</strong></td>
+            <td>{{ available.get(line.id, 0) }}</td>
+            <td>
+              <input name="issued_quantity" type="number" min="0" max="{{ max_qty }}" step="0.001" value="{{ max_qty if available.get(line.id, 0) >= max_qty else available.get(line.id, 0) }}" required style="max-width:140px;">
+            </td>
+            <td><input name="issue_line_remarks"></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="form-actions" style="margin-top:16px">
+      <a class="button" href="/app/indents/{{ indent.id }}">Cancel</a>
+      <button class="button primary">Post Issue</button>
+    </div>
+  </form>
+</div>
+{% endif %}
 {% endblock %}

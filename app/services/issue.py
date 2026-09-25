@@ -78,10 +78,12 @@ class IssueService:
             indent_line = request_map[line_id]
             requested = Decimal(indent_line.requested_quantity)
             issued = Decimal(supplied[line_id].issued_quantity)
-            if issued > requested:
+            max_allowed = Decimal(indent_line.approved_quantity) if indent_line.approved_quantity is not None else requested
+            if issued > max_allowed:
+                limit_type = "approved" if indent_line.approved_quantity is not None else "requested"
                 raise HTTPException(
                     422,
-                    f"Issued quantity {issued} exceeds requested quantity {requested} for item line {line_id}",
+                    f"Issued quantity {issued} exceeds {limit_type} quantity {max_allowed} for item line {line_id}",
                 )
             item = await self.session.get(Item, indent_line.item_id)
             if item is None:

@@ -17,6 +17,7 @@ from app.models.store import Store
 from app.models.unit import Unit
 from app.repositories.indent import IndentRepository
 from app.schemas.indent import (
+    IndentApprovalRequest,
     IndentCreate,
     ManualIndentCreate,
     ManualIndentLineCreate,
@@ -269,11 +270,23 @@ class IndentService:
         )
         return indent, issue
 
-    async def approve_online(self, indent_id: int, actor_id: int) -> Indent:
+    async def approve_online(
+        self,
+        indent_id: int,
+        actor_id: int,
+        payload: IndentApprovalRequest | None = None,
+    ) -> Indent:
         from app.services.authorization import AuthorizationService
+        from sqlalchemy.orm import selectinload
+
         auth = AuthorizationService(self.session)
         await auth.require_permission(actor_id, "INDENT_APPROVE")
-        indent = await self.session.scalar(select(Indent).where(Indent.id == indent_id, Indent.request_source == "ONLINE").with_for_update())
+        indent = await self.session.scalar(
+            select(Indent)
+            .options(selectinload(Indent.lines))
+            .where(Indent.id == indent_id, Indent.request_source == "ONLINE")
+            .with_for_update()
+        )
         if indent is None:
             raise HTTPException(404, "Online indent not found")
         if indent.status != "RECORDED":
@@ -281,6 +294,33 @@ class IndentService:
         if indent.created_by == actor_id:
             raise HTTPException(403, "The indent creator cannot approve the same indent")
         await auth.require_store_controller(actor_id, indent.store_id)
+
+        request_map = {line.id: line for line in indent.lines}
+        if payload and payload.lines:
+            supplied_map = {entry.indent_line_id: entry.approved_quantity for entry in payload.lines}
+            if set(supplied_map) != set(request_map):
+                raise HTTPException(422, "Approved quantity must be provided for all indent lines")
+            for line_id, req_line in request_map.items():
+                appr_qty = Decimal(supplied_map[line_id])
+                if appr_qty < 0:
+                    raise HTTPException(422, f"Approved quantity cannot be negative for line {line_id}")
+                if appr_qty > req_line.requested_quantity:
+                    raise HTTPException(
+                        422,
+                        f"Approved quantity {appr_qty} exceeds requested quantity {req_line.requested_quantity} for item line {line_id}",
+                    )
+                req_line.approved_quantity = appr_qty
+        else:
+            for line in indent.lines:
+                if line.approved_quantity is None:
+                    line.approved_quantity = line.requested_quantity
+
+        if payload and payload.remarks:
+            if indent.remarks:
+                indent.remarks = f"{indent.remarks} | Approval: {payload.remarks}"
+            else:
+                indent.remarks = f"Approval: {payload.remarks}"
+
         indent.status = "PROCESSING"
         await self.session.commit()
         await self.session.refresh(indent)

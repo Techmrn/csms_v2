@@ -37,6 +37,8 @@ from app.models.user import User, user_roles
 from app.models.transfer import StockTransfer
 from app.security.auth import authenticate_user, create_access_token
 from app.schemas.indent import (
+    IndentApprovalLine,
+    IndentApprovalRequest,
     IndentCreate,
     IndentLineCreate,
     IssueFinalizeLine,
@@ -588,8 +590,7 @@ async def new_online_indent_page(
     items = list((await session.scalars(select(Item).options(selectinload(Item.category), selectinload(Item.unit)).where(Item.is_active.is_(True)).order_by(Item.name))).all())
     destination_offices = await permitted_destination_offices(session, current_user, selected_store)
     sections = await sections_for_offices(session, destination_offices)
-    availability = await build_item_availability(session, selected_store.id, selected_fy.id) if selected_store and selected_fy else {}
-    return render(request, "online_indent_new.html", current_user, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, destination_offices=destination_offices, sections=sections, items=items, availability=availability, error=request.query_params.get("error"))
+    return render(request, "online_indent_new.html", current_user, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, destination_offices=destination_offices, sections=sections, items=items, error=request.query_params.get("error"))
 
 
 @router.post("/app/online-indents/new", include_in_schema=False)
@@ -626,11 +627,27 @@ async def approve_online_indent_web(indent_id: int, request: Request, current_us
     if isinstance(current_user, RedirectResponse):
         return current_user
     try:
-        indent = await IndentService(session).approve_online(indent_id, current_user.id)
+        form = await request.form()
+        line_ids = repeated(form, "indent_line_id")
+        qtys = repeated(form, "approved_quantity")
+        approval_lines = None
+        if line_ids and qtys:
+            approval_lines = [
+                IndentApprovalLine(indent_line_id=int(line_ids[i]), approved_quantity=form_decimal(qtys[i]))
+                for i in range(len(line_ids))
+                if line_ids[i] and qtys[i] != ""
+            ]
+        remarks = str(form.get("approval_remarks") or form.get("remarks") or "").strip() or None
+        payload = (
+            IndentApprovalRequest(remarks=remarks, lines=approval_lines)
+            if (approval_lines is not None or remarks is not None)
+            else None
+        )
+        indent = await IndentService(session).approve_online(indent_id, current_user.id, payload)
         return redirect_with_success(f"/app/indents/{indent_id}", f"Indent {indent.indent_no} approved for processing.")
-    except HTTPException as exc:
+    except (HTTPException, ValueError) as exc:
         await session.rollback()
-        return redirect_with_error(f"/app/indents/{indent_id}", exc.detail)
+        return redirect_with_error(f"/app/indents/{indent_id}", exc.detail if isinstance(exc, HTTPException) else str(exc))
 
 
 @router.get("/app/indents", include_in_schema=False)
@@ -862,7 +879,13 @@ async def indent_detail_page(
     indent = (
         await session.execute(
             select(Indent)
-            .options(selectinload(Indent.lines).selectinload(IndentLine.item))
+            .options(
+                selectinload(Indent.lines).selectinload(IndentLine.item).selectinload(Item.unit),
+                selectinload(Indent.store),
+                selectinload(Indent.office),
+                selectinload(Indent.section),
+                selectinload(Indent.creator),
+            )
             .where(Indent.id == indent_id)
         )
     ).scalar_one_or_none()
@@ -874,17 +897,42 @@ async def indent_detail_page(
         current_user.id, indent.store_id
     )
 
+    user_perms = permission_codes(current_user)
+    is_initiator = (indent.created_by == current_user.id)
+
+    is_approver = False
+    if "INDENT_APPROVE" in user_perms:
+        try:
+            await AuthorizationService(session).require_store_controller(current_user.id, indent.store_id)
+            is_approver = True
+        except HTTPException:
+            is_approver = False
+
+    is_issuer = False
+    if "INDENT_PROCESS" in user_perms or "STOCK_ISSUE" in user_perms:
+        try:
+            await AuthorizationService(session).require_store_assignment(current_user.id, indent.store_id)
+            is_issuer = True
+        except HTTPException:
+            is_issuer = False
+
+    can_approve = is_approver and not is_initiator and indent.request_source == "ONLINE" and indent.status == "RECORDED"
+
+    # Approver and issuer should see the balance; section user / request initiator must not
+    show_available = (is_approver or is_issuer) and not is_initiator
+
     issue = await session.scalar(
         select(Issue).where(Issue.indent_id == indent.id)
     )
 
     availability = {}
-    for line in indent.lines:
-        availability[line.id] = await StockService(session).current_balance(
-            indent.store_id,
-            indent.financial_year_id,
-            line.item_id,
-        )
+    if show_available or can_approve:
+        for line in indent.lines:
+            availability[line.id] = await StockService(session).current_balance(
+                indent.store_id,
+                indent.financial_year_id,
+                line.item_id,
+            )
 
     return render(
         request,
@@ -893,7 +941,10 @@ async def indent_detail_page(
         indent=indent,
         issue=issue,
         available=availability,
+        can_approve=can_approve,
+        show_available=show_available,
         error=request.query_params.get("error"),
+        success=request.query_params.get("success"),
     )
 
 

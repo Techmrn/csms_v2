@@ -39,7 +39,7 @@
   <td>{{ indent.office.name if indent.office is defined and indent.office else indent.office_id }}</td>
   <td><span class="badge">{{ indent.status }}</span></td>
   <td>{{ indent.lines|length }}</td>
-  <td>{% if page_mode == "ONLINE" and indent.status == "RECORDED" and ("INDENT_APPROVE" in permissions) %}<form method="post" action="/app/indents/{{ indent.id }}/approve" class="inline-form"><button class="button primary" type="submit">Approve</button></form>{% else %}<a class="button" href="/app/indents/{{ indent.id }}">View</a>{% endif %}</td>
+  <td>{% if page_mode == "ONLINE" and indent.status == "RECORDED" and ("INDENT_APPROVE" in permissions) %}<a class="button primary" href="/app/indents/{{ indent.id }}">Review &amp; Approve</a>{% else %}<a class="button" href="/app/indents/{{ indent.id }}">View</a>{% endif %}</td>
 </tr>
 {% else %}
 <tr><td colspan="7"><div class="empty">No indents found.</div></td></tr>
