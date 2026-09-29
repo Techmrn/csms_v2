@@ -9,7 +9,8 @@ from typing import Annotated
 from pydantic import ValidationError
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from app.security.captcha import generate_numeric_captcha, verify_numeric_captcha
 from sqlalchemy.exc import IntegrityError
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
@@ -287,14 +288,62 @@ async def root() -> RedirectResponse:
 
 @router.get("/login", include_in_schema=False)
 async def login_page(request: Request):
-    return TEMPLATES.TemplateResponse(request=request, name="login.html", context={"error": request.query_params.get("error")})
+    captcha = generate_numeric_captcha()
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="login.html",
+        context={
+            "error": request.query_params.get("error"),
+            "captcha_svg": captcha["svg"],
+            "captcha_token": captcha["token"],
+        },
+    )
+
+
+@router.get("/api/captcha", include_in_schema=False)
+async def get_fresh_captcha():
+    captcha = generate_numeric_captcha()
+    return JSONResponse(content={"svg": captcha["svg"], "token": captcha["token"]})
 
 
 @router.post("/login", include_in_schema=False)
-async def login_submit(request: Request, username: Annotated[str, Form()], password: Annotated[str, Form()], session: AsyncSession = Depends(get_db_session)):
+async def login_submit(
+    request: Request,
+    username: Annotated[str, Form()],
+    password: Annotated[str, Form()],
+    captcha_input: Annotated[str | None, Form()] = None,
+    captcha_token: Annotated[str | None, Form()] = None,
+    session: AsyncSession = Depends(get_db_session),
+):
+    # Enforce numbers-based security CAPTCHA verification
+    if not verify_numeric_captcha(captcha_input, captcha_token):
+        fresh_captcha = generate_numeric_captcha()
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={
+                "error": "Invalid or expired security numbers. Please try again.",
+                "captcha_svg": fresh_captcha["svg"],
+                "captcha_token": fresh_captcha["token"],
+                "username": username,
+            },
+            status_code=400,
+        )
+
     user = await authenticate_user(session, username, password)
     if user is None:
-        return TEMPLATES.TemplateResponse(request=request, name="login.html", context={"error": "Incorrect username or password"}, status_code=401)
+        fresh_captcha = generate_numeric_captcha()
+        return TEMPLATES.TemplateResponse(
+            request=request,
+            name="login.html",
+            context={
+                "error": "Incorrect username or password",
+                "captcha_svg": fresh_captcha["svg"],
+                "captcha_token": fresh_captcha["token"],
+                "username": username,
+            },
+            status_code=401,
+        )
     token = create_access_token(user)
     response = RedirectResponse(url="/app", status_code=303)
     response.set_cookie("csms_access_token", token, httponly=True, secure=False, samesite="lax", max_age=60 * 60, path="/")
@@ -305,7 +354,12 @@ async def login_submit(request: Request, username: Annotated[str, Form()], passw
 async def logout() -> RedirectResponse:
     response = RedirectResponse(url="/login", status_code=303)
     response.delete_cookie("csms_access_token", path="/")
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers["Clear-Site-Data"] = '"cache", "cookies", "storage"'
     return response
+
 
 
 @router.get("/app", include_in_schema=False)

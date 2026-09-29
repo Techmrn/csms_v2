@@ -3,21 +3,49 @@
 
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}CSMS V2{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/csms.css">
+  <link rel="stylesheet" href="/static/css/csms.css?v=2.2">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <script>
+    // Critical security & back-button fix:
+    // If user navigates back using browser cache after logout, force reload immediately.
+    // Since the auth cookie is gone, the reload hits the server and redirects to /login.
+    window.addEventListener('pageshow', function (event) {
+      if (event.persisted || (window.performance && window.performance.getEntriesByType && window.performance.getEntriesByType('navigation')[0] && window.performance.getEntriesByType('navigation')[0].type === 'back_forward')) {
+        window.location.reload();
+      }
+    });
+  </script>
 </head>
 
 <body>
+  <!-- Mobile Header Bar (shown on mobile devices <= 768px) -->
+  <div class="mobile-header">
+    <button type="button" class="menu-toggle" id="menuToggle" aria-label="Open navigation menu">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    </button>
+    <div class="mobile-brand">
+      <span class="brand-mark sm">CS</span>
+      <span class="brand-title-sm">CSMS V2</span>
+    </div>
+    <div class="mobile-user-avatar" title="{{ user.full_name }} ({{ role_label }})">
+      {{ user.full_name[:1]|upper }}
+    </div>
+  </div>
+
+  <!-- Mobile Drawer Backdrop -->
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+
   <div class="shell">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebarDrawer">
       <div class="brand">
         <div class="brand-mark">CS</div>
-        <div>
+        <div class="brand-text">
           <div class="brand-title">CSMS V2</div>
           <div class="brand-subtitle">Central Store Management</div>
         </div>
+        <button type="button" class="drawer-close" id="drawerClose" aria-label="Close navigation menu">&times;</button>
       </div>
       <nav class="nav">
         {% for item in menu %}
@@ -28,7 +56,7 @@
       <div class="sidebar-bottom">
         {% if not is_system_admin %}<a class="nav-item" href="/docs" target="_blank" rel="noreferrer">API
           Documentation</a>{% endif %}
-        <a class="nav-item" href="/logout">Sign out</a>
+        <a class="nav-item logout-link" href="/logout">Sign out</a>
       </div>
     </aside>
     <main class="main">
@@ -50,6 +78,36 @@
       {% block content %}{% endblock %}
     </main>
   </div>
+
+  <script>
+    (function () {
+      var menuToggle = document.getElementById('menuToggle');
+      var drawerClose = document.getElementById('drawerClose');
+      var drawerBackdrop = document.getElementById('drawerBackdrop');
+      var sidebar = document.getElementById('sidebarDrawer');
+
+      function openDrawer() {
+        if (sidebar) sidebar.classList.add('open');
+        if (drawerBackdrop) drawerBackdrop.classList.add('active');
+        document.body.classList.add('nav-open');
+      }
+
+      function closeDrawer() {
+        if (sidebar) sidebar.classList.remove('open');
+        if (drawerBackdrop) drawerBackdrop.classList.remove('active');
+        document.body.classList.remove('nav-open');
+      }
+
+      if (menuToggle) menuToggle.addEventListener('click', openDrawer);
+      if (drawerClose) drawerClose.addEventListener('click', closeDrawer);
+      if (drawerBackdrop) drawerBackdrop.addEventListener('click', closeDrawer);
+
+      // Close drawer on escape key
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeDrawer();
+      });
+    })();
+  </script>
 </body>
 
 </html>

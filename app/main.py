@@ -61,6 +61,10 @@ async def performance_and_cache_middleware(request: Request, call_next):
     response.headers["X-Process-Time"] = f"{duration:.3f}s"
     if request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "public, max-age=604800, immutable"
+    else:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     if not request.url.path.startswith("/api/health"):
         print(f"[{request.method}] {request.url.path} -> {response.status_code} ({duration:.3f}s)")
     return response
