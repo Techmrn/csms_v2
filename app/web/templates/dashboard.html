@@ -2,6 +2,117 @@
 {% block title %}CSMS V2 — Dashboard{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 {% block content %}
+{% if is_section_dashboard %}
+<div class="context-bar">
+  <div>
+    <div class="context-title">{{ user_section.name if user_section else 'Section User' }}{% if user_office %} · {{ user_office.name }}{% endif %}</div>
+    <div class="muted">Requisition workflow and indent tracking for your section. Store inventory balances are managed by the storekeeper.</div>
+  </div>
+  <div class="actions">
+    <a class="button primary" href="/app/online-indents/new">+ New online indent</a>
+  </div>
+</div>
+
+<div class="hero-grid">
+  <section class="hero card">
+    <div class="eyebrow">CURRENT ROLE</div>
+    <h2>{{ role_label }}</h2>
+    <p>{{ user_section.name if user_section else 'Assigned Section' }}{% if user_office %} ({{ user_office.name }}){% endif %}</p>
+    <div class="hero-context">Financial Year: {{ selected_fy.year_name if selected_fy else 'Current FY' }} · Target Store: {{ selected_store.name if selected_store else 'Store' }}</div>
+  </section>
+  <section class="stat-card card">
+    <span>Total Indents</span>
+    <strong>{{ total_indents }}</strong>
+    <small>All section requisitions</small>
+  </section>
+  <section class="stat-card card">
+    <span>Pending Review</span>
+    <strong style="color: var(--accent, #1d4ed8);">{{ pending_indents }}</strong>
+    <small>Recorded / in process</small>
+  </section>
+  <section class="stat-card card">
+    <span>Completed</span>
+    <strong style="color: #059669;">{{ completed_indents }}</strong>
+    <small>Issued &amp; finalized</small>
+  </section>
+</div>
+
+<div class="section-head">
+  <div>
+    <div class="eyebrow">REQUISITIONS TRACKER</div>
+    <h2>Recent section indents</h2>
+  </div>
+  <div class="actions">
+    <a class="button" href="/app/online-indents">View all indents</a>
+    <a class="button primary" href="/app/online-indents/new">+ New indent</a>
+  </div>
+</div>
+
+<div class="card table-card">
+  {% if recent_indents %}
+  <table>
+    <thead>
+      <tr>
+        <th>Indent No</th>
+        <th>Date</th>
+        <th>Target Store</th>
+        <th>Items</th>
+        <th>Status</th>
+        <th class="num">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for indent in recent_indents %}
+      <tr>
+        <td><strong><a href="/app/indents/{{ indent.id }}">{{ indent.indent_no }}</a></strong></td>
+        <td>{{ indent.indent_date }}</td>
+        <td>{{ indent.store.name if indent.store else (stores|selectattr("id", "equalto", indent.store_id)|first).name if (stores|selectattr("id", "equalto", indent.store_id)|first) else indent.store_id }}</td>
+        <td>{{ indent.lines|length }} item{{ 's' if indent.lines|length != 1 else '' }}</td>
+        <td>
+          {% if indent.status == 'FINALIZED' or indent.status == 'COMPLETED' %}
+            <span class="badge" style="background: #dcfce7; color: #15803d;">{{ indent.status }}</span>
+          {% elif indent.status == 'PROCESSING' %}
+            <span class="badge" style="background: #e0f2fe; color: #0369a1;">{{ indent.status }}</span>
+          {% elif indent.status == 'RECORDED' or indent.status == 'SUBMITTED' %}
+            <span class="badge" style="background: #fef3c7; color: #b45309;">{{ indent.status }}</span>
+          {% elif indent.status == 'REJECTED' or indent.status == 'CANCELLED' %}
+            <span class="badge" style="background: #fee2e2; color: #b91c1c;">{{ indent.status }}</span>
+          {% else %}
+            <span class="badge">{{ indent.status }}</span>
+          {% endif %}
+        </td>
+        <td class="num">
+          <a class="button" style="padding: 4px 10px; font-size: 13px;" href="/app/indents/{{ indent.id }}">View</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <p>No online indents raised yet.</p>
+    <a class="button primary" style="margin-top: 10px; display: inline-block;" href="/app/online-indents/new">+ Create first online indent</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="section-head">
+  <div>
+    <div class="eyebrow">WORK AREAS</div>
+    <h2>Available for your section</h2>
+  </div>
+</div>
+<div class="module-grid">
+  {% for item in menu if item.label != 'Dashboard' %}
+  <a class="module card" href="{{ item.href }}">
+    <span>{{ item.label }}</span>
+    <span class="arrow">→</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% else %}
+
 <div class="context-bar">
   <div class="context-title">Working context</div>
   <form method="get" action="/app" class="context-form">
@@ -74,4 +185,5 @@
   {% for item in menu if item.label != 'Dashboard' %}<a class="module card" href="{{ item.href }}"><span>{{ item.label
       }}</span><span class="arrow">→</span></a>{% endfor %}
 </div>
+{% endif %}
 {% endblock %}

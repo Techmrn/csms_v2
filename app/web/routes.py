@@ -368,7 +368,50 @@ async def dashboard(request: Request, current_user: User | RedirectResponse = De
         return current_user
     if is_system_admin(current_user):
         return RedirectResponse(url="/app/admin", status_code=303)
+
+    user_is_section_user = any(role.is_active and role.code == "SECTION_USER" for role in current_user.roles)
     stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
+
+    if user_is_section_user:
+        # Section user stock is not monitored. Display section indent request workflow instead.
+        user_office = await session.get(Office, current_user.office_id) if current_user.office_id else (await session.get(Office, selected_store.office_id) if selected_store else None)
+        user_section = await session.get(Section, current_user.section_id) if current_user.section_id else None
+
+        indent_stmt = select(Indent).options(selectinload(Indent.lines), selectinload(Indent.store)).where(Indent.request_source == "ONLINE")
+        if current_user.section_id:
+            indent_stmt = indent_stmt.where(Indent.section_id == current_user.section_id)
+        elif current_user.office_id:
+            indent_stmt = indent_stmt.where(Indent.office_id == current_user.office_id)
+        else:
+            indent_stmt = indent_stmt.where(Indent.created_by == current_user.id)
+
+        recent_indents = list((await session.scalars(indent_stmt.order_by(Indent.indent_date.desc(), Indent.id.desc()).limit(8))).all())
+
+        base_filter = indent_stmt.whereclause
+        total_indents = int((await session.scalar(select(func.count(Indent.id)).where(base_filter))) or 0)
+        pending_indents = int((await session.scalar(select(func.count(Indent.id)).where(base_filter, Indent.status.in_(["SUBMITTED", "PROCESSING", "RECORDED"])))) or 0)
+        completed_indents = int((await session.scalar(select(func.count(Indent.id)).where(base_filter, Indent.status.in_(["COMPLETED", "FINALIZED"])))) or 0)
+        item_count = int((await session.scalar(select(func.count(Item.id)).where(Item.is_active.is_(True)))) or 0)
+
+        return render(
+            request,
+            "dashboard.html",
+            current_user,
+            is_section_dashboard=True,
+            stores=stores,
+            financial_years=fys,
+            selected_store=selected_store,
+            selected_fy=selected_fy,
+            user_office=user_office,
+            user_section=user_section,
+            recent_indents=recent_indents,
+            total_indents=total_indents,
+            pending_indents=pending_indents,
+            completed_indents=completed_indents,
+            item_count=item_count,
+        )
+
+    # Standard Storekeeper / Store Controller Dashboard
     stock_rows, total_units = [], Decimal("0")
     if selected_store and selected_fy:
         await AuthorizationService(session).require_store_visibility(current_user.id, selected_store.id)
@@ -379,7 +422,21 @@ async def dashboard(request: Request, current_user: User | RedirectResponse = De
     visible_asset_count = 0
     if selected_store:
         visible_asset_count = int((await session.scalar(select(func.count(Asset.id)).where(Asset.current_store_id == selected_store.id))) or 0)
-    return render(request, "dashboard.html", current_user, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, stock_rows=stock_rows, stock_count=len(stock_rows), total_units=total_units, item_count=int(item_count or 0), asset_count=visible_asset_count)
+    return render(
+        request,
+        "dashboard.html",
+        current_user,
+        is_section_dashboard=False,
+        stores=stores,
+        financial_years=fys,
+        selected_store=selected_store,
+        selected_fy=selected_fy,
+        stock_rows=stock_rows,
+        stock_count=len(stock_rows),
+        total_units=total_units,
+        item_count=int(item_count or 0),
+        asset_count=visible_asset_count,
+    )
 
 
 @router.get("/app/opening-stock", include_in_schema=False)
@@ -640,11 +697,25 @@ async def new_online_indent_page(
     if isinstance(current_user, RedirectResponse):
         return current_user
     await AuthorizationService(session).require_permission(current_user.id, "INDENT_CREATE")
-    stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
+    # For online indents in the press, lock to current financial year
+    stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, None)
     items = list((await session.scalars(select(Item).options(selectinload(Item.category), selectinload(Item.unit)).where(Item.is_active.is_(True)).order_by(Item.name))).all())
-    destination_offices = await permitted_destination_offices(session, current_user, selected_store)
-    sections = await sections_for_offices(session, destination_offices)
-    return render(request, "online_indent_new.html", current_user, stores=stores, financial_years=fys, selected_store=selected_store, selected_fy=selected_fy, destination_offices=destination_offices, sections=sections, items=items, error=request.query_params.get("error"))
+    user_office = await session.get(Office, current_user.office_id) if current_user.office_id else (await session.get(Office, selected_store.office_id) if selected_store else None)
+    user_section = await session.get(Section, current_user.section_id) if current_user.section_id else None
+    return render(
+        request,
+        "online_indent_new.html",
+        current_user,
+        stores=stores,
+        financial_years=fys,
+        selected_store=selected_store,
+        selected_fy=selected_fy,
+        user_office=user_office,
+        user_section=user_section,
+        items=items,
+        today=date.today(),
+        error=request.query_params.get("error"),
+    )
 
 
 @router.post("/app/online-indents/new", include_in_schema=False)
@@ -656,12 +727,16 @@ async def create_online_indent_web(request: Request, current_user: User | Redire
         await AuthorizationService(session).require_permission(current_user.id, "INDENT_CREATE")
         item_ids, qtys, remarks = (repeated(form, n) for n in ("item_id", "requested_quantity", "line_remarks"))
         lines = [IndentLineCreate(item_id=int(item_ids[i]), requested_quantity=form_decimal(qtys[i]), remarks=(remarks[i] if i < len(remarks) else None) or None) for i in range(len(item_ids)) if item_ids[i] and qtys[i]]
+        
+        office_id = int(form["office_id"]) if form.get("office_id") else (current_user.office_id or 0)
+        section_id = int(form["section_id"]) if form.get("section_id") else current_user.section_id
+
         payload = IndentCreate(
             indent_date=date.fromisoformat(str(form["indent_date"])),
             financial_year_id=int(form["financial_year_id"]),
             store_id=int(form["store_id"]),
-            office_id=int(form["office_id"]),
-            section_id=int(form["section_id"]) if form.get("section_id") else None,
+            office_id=office_id,
+            section_id=section_id,
             request_source="ONLINE",
             request_type=str(form.get("request_type") or "GENERAL"),
             reference_no=str(form.get("reference_no") or "") or None,

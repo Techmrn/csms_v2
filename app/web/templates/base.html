@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}CSMS V2{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/csms.css?v=2.2">
+  <link rel="stylesheet" href="/static/css/csms.css?v=2.3">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <script>
     // Critical security & back-button fix:
@@ -29,8 +29,14 @@
       <span class="brand-mark sm">CS</span>
       <span class="brand-title-sm">CSMS V2</span>
     </div>
-    <div class="mobile-user-avatar" title="{{ user.full_name }} ({{ role_label }})">
-      {{ user.full_name[:1]|upper }}
+    <div class="mobile-header-actions">
+      <div class="mobile-user-avatar" title="{{ user.full_name }} ({{ role_label }})">
+        {{ user.full_name[:1]|upper }}
+      </div>
+      <a href="/logout" class="mobile-logout-btn" title="Sign out" aria-label="Sign out">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        <span>Logout</span>
+      </a>
     </div>
   </div>
 
@@ -47,6 +53,22 @@
         </div>
         <button type="button" class="drawer-close" id="drawerClose" aria-label="Close navigation menu">&times;</button>
       </div>
+
+      <!-- Mobile Drawer User Profile & Quick Logout -->
+      <div class="drawer-user-card">
+        <div class="drawer-user-info">
+          <div class="avatar sm">{{ user.full_name[:1]|upper }}</div>
+          <div>
+            <div class="drawer-user-name">{{ user.full_name }}</div>
+            <div class="drawer-user-role">{{ role_label }}</div>
+          </div>
+        </div>
+        <a href="/logout" class="drawer-logout-btn" title="Sign out">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          Sign out
+        </a>
+      </div>
+
       <nav class="nav">
         {% for item in menu %}
         <a class="nav-item {% if request.url.path == item.href or (item.href != '/app' and request.url.path.startswith(item.href)) %}active{% endif %}"
@@ -56,7 +78,10 @@
       <div class="sidebar-bottom">
         {% if not is_system_admin %}<a class="nav-item" href="/docs" target="_blank" rel="noreferrer">API
           Documentation</a>{% endif %}
-        <a class="nav-item logout-link" href="/logout">Sign out</a>
+        <a class="nav-item logout-link" href="/logout">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          Sign out
+        </a>
       </div>
     </aside>
     <main class="main">

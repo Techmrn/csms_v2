@@ -262,6 +262,17 @@ async def test_online_indent_web_approval_flow(client):
     assert "data-available" not in new_html
     assert "available-value" not in new_html
 
+    # Section user views dashboard - stock is not monitored, shows indents workflow
+    foreman_dash_resp = await client.get("/app", cookies=foreman_cookies)
+    assert foreman_dash_resp.status_code == 200
+    foreman_dash_html = foreman_dash_resp.text
+    assert "Total Indents" in foreman_dash_html
+    assert "Pending Review" in foreman_dash_html
+    assert "Recent section indents" in foreman_dash_html
+    assert "Stock Accounts" not in foreman_dash_html
+    assert "STOCK OVERVIEW" not in foreman_dash_html
+    assert "Open stock" not in foreman_dash_html
+
     # Section user / initiator views indent detail page - Current Available MUST be hidden
     initiator_detail_resp = await client.get(f"/app/indents/{indent_id}", cookies=foreman_cookies)
     assert initiator_detail_resp.status_code == 200
