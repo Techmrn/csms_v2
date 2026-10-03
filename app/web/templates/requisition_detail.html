@@ -90,17 +90,43 @@
 {% if requisition.status in ['READY_FOR_TRANSFER', 'CENTRAL_APPROVED'] and 'STOCK_TRANSFER_DISPATCH' in permissions %}
 <div class="card" style="margin-top:18px">
     <h2>Issue & Dispatch Transfer</h2>
-    <div class="notice">Issue stock from Central Store to fulfil the approved quantities for {{ requesting_store.name if requesting_store else 'Branch Store' }}.</div>
+    <div class="notice">Issue stock from Central Store to fulfil the approved quantities for {{ requesting_store.name if requesting_store else 'Branch Store' }}. Both vehicle number and person receiving are optional.</div>
     <form method="post" action="/app/requisitions/{{ requisition.id }}/dispatch" class="stack">
-        <label>Dispatch Date<input type="date" name="transfer_date" value="{{ requisition.requisition_date }}" required></label>
+        <div class="grid cols-3" style="gap:12px; margin-bottom:12px;">
+            <label>Dispatch Date<input type="date" name="transfer_date" value="{{ (today or requisition.requisition_date).isoformat() if today else requisition.requisition_date }}" required></label>
+            <label>Vehicle Number (Optional)<input type="text" name="vehicle_no" placeholder="e.g. KL-01-AB-1234 or Hand Delivery"></label>
+            <label>Person Receiving / Carrier (Optional)<input type="text" name="received_by_name" placeholder="e.g. Driver / Delivery Person Name"></label>
+        </div>
         {% for line in requisition.lines %}
         <input type="hidden" name="requisition_line_id" value="{{ line.id }}">
         <label>{{ line.item.name if line.item else line.item_id }} — dispatch quantity
             <input name="dispatch_quantity" value="{{ line.approved_quantity or 0 }}" type="number" min="0" max="{{ line.approved_quantity or 0 }}" step="0.001">
         </label>
         {% endfor %}
-        <button class="button primary">Issue stock transfer</button>
+        <button class="button primary">Issue stock transfer & Generate Gate Pass</button>
     </form>
+</div>
+{% endif %}
+{% if transfer %}
+<div class="card" style="margin-top:18px; border-left:4px solid #0f766e;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div>
+            <h2 style="margin:0 0 4px 0;">Outward Gate Pass &bull; {{ transfer.transfer_no }}</h2>
+            <div class="muted">
+                Status: <span class="badge">{{ transfer.status }}</span> &bull;
+                Date: {{ transfer.transfer_date }} &bull;
+                Vehicle: <strong>{{ transfer.vehicle_no or '—' }}</strong> &bull;
+                Receiver: <strong>{{ transfer.received_by_name or '—' }}</strong>
+            </div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <a class="button primary" href="/app/transfers/{{ transfer.id }}/gate-pass" id="btnViewGatePass">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px; vertical-align:-2px;"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                View &amp; Print Gate Pass (A4)
+            </a>
+            <a class="button" href="/app/transfers/{{ transfer.id }}/gate-pass.pdf">Download PDF</a>
+        </div>
+    </div>
 </div>
 {% endif %}
 {% if requisition.status == 'DISPATCHED' and 'STOCK_TRANSFER_RECEIVE' in permissions %}

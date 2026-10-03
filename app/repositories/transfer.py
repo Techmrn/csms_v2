@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.transfer import StockTransfer, TransferDiscrepancy
+from app.models.transfer import StockTransfer, StockTransferLine, TransferDiscrepancy, TransferLineAsset
 
 
 class TransferRepository:
@@ -12,7 +12,11 @@ class TransferRepository:
     async def get(self, transfer_id: int, for_update: bool = False):
         stmt = (
             select(StockTransfer)
-            .options(selectinload(StockTransfer.lines))
+            .options(
+                selectinload(StockTransfer.lines).selectinload(StockTransferLine.item),
+                selectinload(StockTransfer.lines).selectinload(StockTransferLine.unit),
+                selectinload(StockTransfer.lines).selectinload(StockTransferLine.asset_links).selectinload(TransferLineAsset.asset),
+            )
             .where(StockTransfer.id == transfer_id)
         )
         if for_update:

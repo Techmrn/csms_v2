@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — New Stock Transfer{% endblock %}
+{% block page_title %}New Stock Transfer{% endblock %}
+
+{% block content %}
+<div class="context-bar">
+  <div>
+    <div class="context-title">Initiate Stock Transfer</div>
+    <div class="muted">Inter-store transfer between Central Store and Branches or between peer branch stores.</div>
+  </div>
+  <a class="button" href="/app/transfers">Back to Transfers</a>
+</div>
+
+<div class="card">
+  <form method="post" action="/app/transfers/new" id="transferForm" class="stack">
+    {% if is_directorate %}
+    <div class="notice" style="background:#f0fdfa; border-left:4px solid #0f766e;">
+      <strong>Directorate Directive:</strong> You are initiating as Directorate authority. You can create a <em>Push Transfer Directive</em> (ordered directly by Directorate) or a <em>Standard Request</em>.
+    </div>
+    <div class="grid cols-2" style="gap:16px;">
+      <label>
+        Transfer Mode
+        <select name="transfer_mode" id="transfer_mode" required>
+          <option value="PUSH" selected>Push Directive (Ordered by Directorate)</option>
+          <option value="PULL">Pull Request (Store Replenishment)</option>
+        </select>
+      </label>
+      <label>
+        Transfer Date
+        <input type="date" name="transfer_date" value="{{ today.isoformat() }}" required>
+      </label>
+    </div>
+    {% else %}
+    <input type="hidden" name="transfer_mode" value="PULL">
+    <label style="max-width:300px;">
+      Transfer Date
+      <input type="date" name="transfer_date" value="{{ today.isoformat() }}" required>
+    </label>
+    {% endif %}
+
+    <div class="grid cols-2" style="gap:16px; margin-top:8px;">
+      <label>
+        <strong>Source (Supplying) Store</strong>
+        <select name="source_store_id" id="source_store_id" required>
+          <option value="">— Select Source Store —</option>
+          {% for s in all_stores %}
+          <option value="{{ s.id }}">{{ s.name }} ({{ s.store_type }})</option>
+          {% endfor %}
+        </select>
+        <small class="muted">The store from which stock will be issued.</small>
+      </label>
+
+      <label>
+        <strong>Destination (Requesting) Store</strong>
+        <select name="destination_store_id" id="destination_store_id" required>
+          <option value="">— Select Destination Store —</option>
+          {% for s in eligible_dest_stores %}
+          <option value="{{ s.id }}" {% if selected_dest_store_id == s.id %}selected{% endif %}>{{ s.name }} ({{ s.store_type }})</option>
+          {% endfor %}
+        </select>
+        <small class="muted">The store that will receive and accept the stock.</small>
+      </label>
+    </div>
+
+    <label style="margin-top:8px;">
+      Justification / Purpose / Remarks (Optional)
+      <textarea name="remarks" rows="2" placeholder="e.g. Replenishment of consumable papers for upcoming exam printing / Surplus redistribution"></textarea>
+    </label>
+
+    <div style="margin-top:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="margin:0;">Transfer Line Items</h3>
+        <button type="button" class="button sm secondary" id="btnAddLine">+ Add Item Line</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="entry-table" id="linesTable">
+          <thead>
+            <tr>
+              <th style="width:50%;">Item</th>
+              <th style="width:25%;">Requested Quantity</th>
+              <th style="width:20%;">Line Remarks</th>
+              <th style="width:5%; text-align:center;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="linesBody">
+            <tr class="line-row">
+              <td>
+                <select name="item_id" required class="item-select" style="width:100%;">
+                  <option value="">— Select Item —</option>
+                  {% for item in items %}
+                  <option value="{{ item.id }}" data-unit-id="{{ item.unit_id }}" data-unit-code="{{ item.unit.code if item.unit else '' }}">
+                    {{ item.code }} — {{ item.name }} ({{ item.unit.code if item.unit else '' }})
+                  </option>
+                  {% endfor %}
+                </select>
+                <input type="hidden" name="unit_id" class="unit-id-input">
+              </td>
+              <td>
+                <input type="number" name="requested_quantity" min="0.001" step="0.001" placeholder="Quantity" required style="width:100%;">
+              </td>
+              <td>
+                <input type="text" name="line_remarks" placeholder="Optional notes" style="width:100%;">
+              </td>
+              <td style="text-align:center;">
+                <button type="button" class="button sm danger btn-remove-line" title="Remove line">&times;</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:20px;">
+      <button class="button primary" type="submit">Submit Stock Transfer</button>
+      <a class="button" href="/app/transfers">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function() {
+  var linesBody = document.getElementById('linesBody');
+  var btnAddLine = document.getElementById('btnAddLine');
+
+  function syncUnitId(row) {
+    var select = row.querySelector('.item-select');
+    var unitInput = row.querySelector('.unit-id-input');
+    if (select && unitInput) {
+      var opt = select.options[select.selectedIndex];
+      unitInput.value = opt ? (opt.getAttribute('data-unit-id') || '') : '';
+    }
+  }
+
+  function attachRowEvents(row) {
+    var select = row.querySelector('.item-select');
+    if (select) {
+      select.addEventListener('change', function() {
+        syncUnitId(row);
+      });
+      syncUnitId(row);
+    }
+    var btnRemove = row.querySelector('.btn-remove-line');
+    if (btnRemove) {
+      btnRemove.addEventListener('click', function() {
+        if (linesBody.querySelectorAll('.line-row').length > 1) {
+          row.remove();
+        } else {
+          alert('At least one item line is required.');
+        }
+      });
+    }
+  }
+
+  var initialRows = linesBody.querySelectorAll('.line-row');
+  initialRows.forEach(attachRowEvents);
+
+  if (btnAddLine) {
+    btnAddLine.addEventListener('click', function() {
+      var firstRow = linesBody.querySelector('.line-row');
+      if (firstRow) {
+        var clone = firstRow.cloneNode(true);
+        var select = clone.querySelector('.item-select');
+        if (select) select.selectedIndex = 0;
+        var inputs = clone.querySelectorAll('input');
+        inputs.forEach(function(inp) { inp.value = ''; });
+        linesBody.appendChild(clone);
+        attachRowEvents(clone);
+      }
+    });
+  }
+
+  // Prevent selecting same source and destination
+  var form = document.getElementById('transferForm');
+  var sourceSelect = document.getElementById('source_store_id');
+  var destSelect = document.getElementById('destination_store_id');
+
+  if (form) {
+    form.addEventListener('submit', function(e) {
+      if (sourceSelect && destSelect && sourceSelect.value === destSelect.value && sourceSelect.value !== '') {
+        e.preventDefault();
+        alert('Source Store and Destination Store must be different.');
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

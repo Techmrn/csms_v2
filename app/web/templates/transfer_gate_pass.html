@@ -1,0 +1,459 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Outward Gate Pass {{ transfer.transfer_no }}{% endblock %}
+{% block page_title %}Outward Gate Pass{% endblock %}
+
+{% block content %}
+<style>
+/* Screen & Component Styles */
+.gate-pass-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.gate-pass-action-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.gp-sheet {
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 32px 36px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  max-width: 820px;
+  margin: 0 auto 30px auto;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+.gp-header {
+  text-align: center;
+  border-bottom: 2px solid #0f766e;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+}
+.gp-dept {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+.gp-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #0f766e;
+  margin: 2px 0 4px 0;
+  text-transform: uppercase;
+}
+.gp-sub {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.gp-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 24px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  font-size: 13px;
+}
+.gp-meta-row {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dashed #e2e8f0;
+  padding: 4px 0;
+}
+.gp-meta-row:last-child {
+  border-bottom: none;
+}
+.gp-label {
+  font-weight: 600;
+  color: #475569;
+}
+.gp-val {
+  font-weight: 700;
+  color: #0f172a;
+  text-align: right;
+}
+.gp-highlight {
+  color: #0f766e;
+  font-size: 13.5px;
+}
+.gp-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 12.5px;
+}
+.gp-table th {
+  background: #f1f5f9;
+  color: #1e293b;
+  font-weight: 700;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.gp-table td {
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  color: #1e293b;
+  vertical-align: middle;
+}
+.gp-table tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+.gp-table .text-center {
+  text-align: center;
+}
+.gp-table .text-right {
+  text-align: right;
+}
+.gp-total-row td {
+  font-weight: 700;
+  background: #f1f5f9;
+  border-top: 2px solid #cbd5e1;
+}
+.gp-decl {
+  background: #f8fafc;
+  border-left: 3px solid #0f766e;
+  border-top: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #334155;
+  margin: 18px 0;
+  font-style: italic;
+}
+.gp-signatures {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-top: 36px;
+  padding-top: 14px;
+}
+.gp-sig-box {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.gp-sig-line {
+  border-top: 1px solid #334155;
+  margin-bottom: 6px;
+  padding-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+}
+.gp-sig-role {
+  font-size: 10px;
+  color: #64748b;
+  line-height: 1.3;
+}
+.gp-edit-box {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+.gp-edit-box h3 {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  color: #1e293b;
+}
+
+/* Strict A4 Print Styling */
+@page {
+  size: A4 portrait;
+  margin: 10mm 12mm 10mm 12mm;
+}
+
+@media print {
+  /* Hide all app chrome & non-printable elements */
+  .sidebar,
+  .topbar,
+  .mobile-header,
+  .drawer-backdrop,
+  .gate-pass-actions,
+  .gp-edit-box,
+  .alert,
+  .context-bar,
+  .button,
+  .nav,
+  header,
+  footer {
+    display: none !important;
+  }
+
+  body, html {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .shell {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: auto !important;
+  }
+
+  .main {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .gp-sheet {
+    border: 1.5px solid #000000 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 12mm 14mm !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    page-break-inside: avoid !important;
+  }
+
+  .gp-header {
+    border-bottom: 2px solid #000000 !important;
+  }
+
+  .gp-dept, .gp-title, .gp-sub, .gp-val, .gp-highlight {
+    color: #000000 !important;
+  }
+
+  .gp-meta-grid {
+    background: #f8f8f8 !important;
+    border: 1px solid #000000 !important;
+  }
+
+  .gp-meta-row {
+    border-bottom: 1px dashed #999999 !important;
+  }
+
+  .gp-table th {
+    background: #e5e5e5 !important;
+    color: #000000 !important;
+    border: 1px solid #000000 !important;
+  }
+
+  .gp-table td {
+    border: 1px solid #666666 !important;
+    color: #000000 !important;
+  }
+
+  .gp-total-row td {
+    background: #e5e5e5 !important;
+    border-top: 1.5px solid #000000 !important;
+  }
+
+  .gp-decl {
+    background: #f8f8f8 !important;
+    border: 1px solid #666666 !important;
+    border-left: 3px solid #000000 !important;
+    color: #000000 !important;
+  }
+
+  .gp-sig-line {
+    border-top: 1px solid #000000 !important;
+    color: #000000 !important;
+  }
+}
+</style>
+
+<!-- Top Action Bar (Hidden on Print) -->
+<div class="gate-pass-actions">
+  <div>
+    <h2 style="margin:0 0 4px 0;">Outward Gate Pass — {{ transfer.transfer_no }}</h2>
+    <div class="muted">Inter-Store Consumable / Asset Stock Transfer Voucher for gate security clearance and transit.</div>
+  </div>
+  <div class="gate-pass-action-group">
+    <button type="button" class="button primary" onclick="window.print();" id="btnPrintGatePass">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px; vertical-align:-2px;"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+      Print Gate Pass (A4)
+    </button>
+    <a class="button" href="/app/transfers/{{ transfer.id }}/gate-pass.pdf" id="btnDownloadGatePassPdf">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px; vertical-align:-2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      Download PDF
+    </a>
+    <a class="button" href="/app/requisitions/{{ requisition.id }}">Back to Requisition</a>
+    <a class="button" href="/app/transfers">All Transfers</a>
+  </div>
+</div>
+
+<!-- Optional Vehicle & Receiver Quick Update Form (Hidden on Print) -->
+<div class="gp-edit-box">
+  <details {% if not transfer.vehicle_no and not transfer.received_by_name %}open{% endif %}>
+    <summary style="cursor:pointer; font-weight:600; color:#0f766e; user-select:none;">
+      {% if transfer.vehicle_no or transfer.received_by_name %}
+        Edit Vehicle Number or Receiver Name (Optional)
+      {% else %}
+        Enter Vehicle Number & Receiver Name (Optional Fields)
+      {% endif %}
+    </summary>
+    <form method="post" action="/app/transfers/{{ transfer.id }}/gate-pass" style="margin-top:14px;">
+      <div class="grid cols-2" style="gap:14px;">
+        <label>
+          <strong>Vehicle Number</strong> (Optional)
+          <input type="text" name="vehicle_no" value="{{ transfer.vehicle_no or '' }}" placeholder="e.g. KL-01-AB-1234 or Hand Delivery" style="margin-top:4px;">
+          <small class="muted">Enter vehicle registration number if dispatched by vehicle.</small>
+        </label>
+        <label>
+          <strong>Name of Person Receiving / Carrier</strong> (Optional)
+          <input type="text" name="received_by_name" value="{{ transfer.received_by_name or '' }}" placeholder="e.g. Driver / Delivery Person / Branch Storekeeper" style="margin-top:4px;">
+          <small class="muted">Name of driver, transport agent, or person accepting the items for transit.</small>
+        </label>
+      </div>
+      <div style="margin-top:12px; display:flex; gap:10px;">
+        <button class="button primary sm" type="submit">Save Gate Pass Details</button>
+      </div>
+    </form>
+  </details>
+</div>
+
+<!-- Printable A4 Sheet -->
+<div class="gp-sheet" id="printableGatePass">
+  <div class="gp-header">
+    <div class="gp-dept">Directorate of Printing &amp; Stationery</div>
+    <div class="gp-title">Outward Gate Pass / Dispatch Voucher</div>
+    <div class="gp-sub">Inter-Store Stock Transfer &bull; Central Store to Branch Office</div>
+  </div>
+
+  <div class="gp-meta-grid">
+    <div>
+      <div class="gp-meta-row">
+        <span class="gp-label">Gate Pass / Transfer No.:</span>
+        <span class="gp-val gp-highlight">{{ transfer.transfer_no }}</span>
+      </div>
+      <div class="gp-meta-row">
+        <span class="gp-label">Requisition Ref No.:</span>
+        <span class="gp-val">{{ requisition.requisition_no }}</span>
+      </div>
+      <div class="gp-meta-row">
+        <span class="gp-label">Source Store:</span>
+        <span class="gp-val">{{ source_store.name }} (Central Store)</span>
+      </div>
+      <div class="gp-meta-row">
+        <span class="gp-label">Vehicle Number:</span>
+        <span class="gp-val gp-highlight">{{ transfer.vehicle_no or '— (Not specified / Hand Delivery)' }}</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="gp-meta-row">
+        <span class="gp-label">Dispatch Date:</span>
+        <span class="gp-val">{{ transfer.transfer_date }}</span>
+      </div>
+      <div class="gp-meta-row">
+        <span class="gp-label">Requisition Date:</span>
+        <span class="gp-val">{{ requisition.requisition_date }}</span>
+      </div>
+      <div class="gp-meta-row">
+        <span class="gp-label">Destination Store:</span>
+        <span class="gp-val">{{ destination_store.name }} {% if destination_office %}({{ destination_office.name }}){% endif %}</span>
+      </div>
+      <div class="gp-meta-row">
+        <span class="gp-label">Received By / Carrier:</span>
+        <span class="gp-val gp-highlight">{{ transfer.received_by_name or '—' }}</span>
+      </div>
+    </div>
+  </div>
+
+  <table class="gp-table">
+    <thead>
+      <tr>
+        <th style="width:36px;" class="text-center">#</th>
+        <th style="width:110px;">Item Code</th>
+        <th>Item Description</th>
+        <th style="width:70px;">Unit</th>
+        <th style="width:110px;" class="text-right">Dispatched Qty</th>
+        <th style="width:130px;">Remarks / Asset IDs</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in transfer.lines %}
+      <tr>
+        <td class="text-center">{{ loop.index }}</td>
+        <td><strong>{{ line.item.code if line.item else line.item_id }}</strong></td>
+        <td>{{ line.item.name if line.item else '—' }}</td>
+        <td>{{ line.unit.code if line.unit else line.unit_id }}</td>
+        <td class="text-right"><strong>{{ line.quantity }}</strong></td>
+        <td>
+          {% if line.asset_links %}
+            {% for al in line.asset_links %}
+              <span class="badge sm">{{ al.asset.asset_code if al.asset else al.asset_id }}</span>{% if not loop.last %}, {% endif %}
+            {% endfor %}
+          {% else %}
+            {{ line.remarks or '—' }}
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" class="text-center muted">No dispatched line items found.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="gp-total-row">
+        <td colspan="4" class="text-right">Total Line Items: {{ transfer.lines|length }}</td>
+        <td class="text-right">{{ total_qty }}</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="gp-decl">
+    <strong>Security &amp; Gate Clearance Notice:</strong> Certified that the materials and stock listed above have been checked, officially issued, and dispatched from Central Store to {{ destination_store.name }} in accordance with approved requisition {{ requisition.requisition_no }}. The security personnel at the gate are authorized to permit outward passage.
+  </div>
+
+  <div class="gp-signatures">
+    <div class="gp-sig-box">
+      <div style="height:36px;"></div>
+      <div class="gp-sig-line">{{ dispatched_by_user.full_name if dispatched_by_user else 'Central Storekeeper' }}</div>
+      <div class="gp-sig-role">Prepared &amp; Dispatched By<br>(Central Storekeeper)</div>
+    </div>
+    <div class="gp-sig-box">
+      <div style="height:36px;"></div>
+      <div class="gp-sig-line">Gate Security Officer</div>
+      <div class="gp-sig-role">Outward Verification &amp; Seal<br>(Date, Time &amp; Gate Stamp)</div>
+    </div>
+    <div class="gp-sig-box">
+      <div style="height:36px;"></div>
+      <div class="gp-sig-line">{{ transfer.received_by_name or 'Carrier / Driver' }}</div>
+      <div class="gp-sig-role">Received For Transit<br>(Carrier / Vehicle Driver)</div>
+    </div>
+    <div class="gp-sig-box">
+      <div style="height:36px;"></div>
+      <div class="gp-sig-line">Branch Storekeeper</div>
+      <div class="gp-sig-role">Received In Good Condition<br>({{ destination_store.name }})</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

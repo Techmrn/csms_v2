@@ -35,7 +35,7 @@ from app.models.role import Role
 from app.models.store import Store
 from app.models.unit import Unit
 from app.models.user import User, user_roles
-from app.models.transfer import StockTransfer
+from app.models.transfer import StockTransfer, StockTransferLine, TransferLineAsset
 from app.security.auth import authenticate_user, create_access_token
 from app.schemas.indent import (
     IndentApprovalLine,
@@ -49,7 +49,19 @@ from app.schemas.indent import (
 )
 from app.schemas.petty_purchase import PettyPurchaseCreate, PettyPurchaseLineCreate, PettyPurchasePostRequest, PettyPurchaseVerifyRequest
 from app.schemas.requisition import RequisitionCreate, RequisitionLineCreate, BranchApprovalRequest, BranchApprovalLine, CentralApprovalRequest, RequisitionApprovalLine
-from app.schemas.transfer import TransferDispatchRequest, TransferDispatchLine, TransferReceiveRequest, TransferReceiveLine
+from app.schemas.transfer import (
+    TransferCreateLine,
+    TransferCreateRequest,
+    TransferApprovalLine,
+    TransferApproveBranchRequest,
+    TransferApproveDirectorateRequest,
+    TransferAuthorizeSupplyRequest,
+    TransferRejectRequest,
+    TransferDispatchRequest,
+    TransferDispatchLine,
+    TransferReceiveRequest,
+    TransferReceiveLine,
+)
 from app.schemas.receipt import ReceiptCreate, ReceiptLineCreate, AssetReceiptInput
 from app.schemas.stock_return import StockReturnCreate, StockReturnLineCreate
 from app.schemas.stock import OpeningStockCreate, OpeningStockLineCreate, OpeningAssetInput
@@ -64,7 +76,7 @@ from app.services.stock import StockService
 from app.services.stock_return import StockReturnService
 from app.services.registers import RegisterService
 from app.web.auth import get_web_current_user
-from app.services.pdf_reports import make_register_pdf
+from app.services.pdf_reports import make_register_pdf, make_transfer_gate_pass_pdf
 
 WEB_ROOT = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(WEB_ROOT / "templates"))
@@ -138,6 +150,19 @@ def visible_menu(user: User) -> list[dict[str, str | None]]:
                 "STOCK_TRANSFER_DISPATCH",
             }
             if perms.intersection(requisition_permissions):
+                menu.append({"label": label, "href": href})
+            continue
+        if label == "Transfers":
+            transfer_permissions = {
+                "STOCK_TRANSFER_VIEW",
+                "STOCK_TRANSFER_CREATE",
+                "STOCK_TRANSFER_APPROVE_BRANCH",
+                "STOCK_TRANSFER_APPROVE_DIRECTORATE",
+                "STOCK_TRANSFER_AUTHORIZE_SUPPLY",
+                "STOCK_TRANSFER_DISPATCH",
+                "STOCK_TRANSFER_RECEIVE",
+            }
+            if perms.intersection(transfer_permissions):
                 menu.append({"label": label, "href": href})
             continue
         if permission and permission in perms:
@@ -1351,9 +1376,20 @@ async def dispatch_requisition_web(requisition_id: int, request: Request, curren
     form = await request.form()
     try:
         ids, qtys = repeated(form, "requisition_line_id"), repeated(form, "dispatch_quantity")
-        payload = TransferDispatchRequest(transfer_date=date.fromisoformat(str(form["transfer_date"])), remarks=None, lines=[TransferDispatchLine(requisition_line_id=int(ids[i]), dispatch_quantity=form_decimal(qtys[i])) for i in range(len(ids))])
-        await TransferService(session).dispatch(requisition_id, payload, current_user.id)
-        return redirect_with_success(f"/app/requisitions/{requisition_id}", "Transfer dispatched successfully.")
+        vehicle_no = str(form.get("vehicle_no") or "").strip() or None
+        received_by_name = str(form.get("received_by_name") or "").strip() or None
+        remarks = str(form.get("remarks") or "").strip() or None
+        payload = TransferDispatchRequest(
+            transfer_date=date.fromisoformat(str(form["transfer_date"])),
+            remarks=remarks,
+            vehicle_no=vehicle_no,
+            received_by_name=received_by_name,
+            lines=[TransferDispatchLine(requisition_line_id=int(ids[i]), dispatch_quantity=form_decimal(qtys[i])) for i in range(len(ids))],
+        )
+        transfer = await TransferService(session).dispatch(requisition_id, payload, current_user.id)
+        if transfer:
+            return redirect_with_success(f"/app/transfers/{transfer.id}/gate-pass", "Transfer dispatched successfully. Outward Gate Pass generated.")
+        return redirect_with_success(f"/app/requisitions/{requisition_id}", "Requisition closed with zero dispatch.")
     except (HTTPException, ValueError) as exc:
         await session.rollback(); return redirect_with_error(f"/app/requisitions/{requisition_id}", exc.detail if isinstance(exc, HTTPException) else str(exc))
 
@@ -1400,18 +1436,426 @@ async def receive_requisition_web(requisition_id: int, request: Request, current
 @router.get("/app/transfers", include_in_schema=False)
 async def transfers_page(request: Request, current_user: User | RedirectResponse = Depends(get_web_current_user), status: str | None = None, session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    await require_view_permission(session, current_user.id, "STOCK_TRANSFER_VIEW")
+    perms = permission_codes(current_user)
+    transfer_perms = {
+        "STOCK_TRANSFER_VIEW",
+        "STOCK_TRANSFER_CREATE",
+        "STOCK_TRANSFER_APPROVE_BRANCH",
+        "STOCK_TRANSFER_APPROVE_DIRECTORATE",
+        "STOCK_TRANSFER_AUTHORIZE_SUPPLY",
+        "STOCK_TRANSFER_DISPATCH",
+        "STOCK_TRANSFER_RECEIVE",
+    }
+    if not perms.intersection(transfer_perms):
+        raise HTTPException(403, "User lacks stock transfer access permission")
     visible = await AuthorizationService(session).get_visible_stores(current_user.id)
     all_rows = []
-    if visible is None:
+    if visible is None or is_system_admin(current_user) or "STOCK_TRANSFER_APPROVE_DIRECTORATE" in perms:
         all_rows = await TransferService(session).list(None, status)
     else:
-        seen=set()
+        seen = set()
         for sid in visible:
             for row in await TransferService(session).list(sid, status):
-                if row.id not in seen: all_rows.append(row); seen.add(row.id)
+                if row.id not in seen:
+                    all_rows.append(row)
+                    seen.add(row.id)
     stores = list((await session.scalars(select(Store).where(Store.is_active.is_(True)).order_by(Store.name))).all())
     return render(request, "transfers.html", current_user, transfers=all_rows, stores=stores, error=request.query_params.get("error"), success=request.query_params.get("success"))
+
+
+@router.get("/app/transfers/new", include_in_schema=False)
+async def new_transfer_page(
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    perms = permission_codes(current_user)
+    if not perms.intersection({"STOCK_TRANSFER_CREATE", "STOCK_TRANSFER_APPROVE_DIRECTORATE"}):
+        raise HTTPException(403, "User lacks stock transfer creation permission")
+
+    auth = AuthorizationService(session)
+    visible_stores = await auth.get_visible_stores(current_user.id)
+    all_stores = list((await session.scalars(select(Store).where(Store.is_active.is_(True)).order_by(Store.name))).all())
+
+    # If directorate or system admin, can create for any destination store
+    is_directorate = bool(perms.intersection({"STOCK_TRANSFER_APPROVE_DIRECTORATE"})) or is_system_admin(current_user)
+    if is_directorate or visible_stores is None:
+        eligible_dest_stores = all_stores
+    else:
+        eligible_dest_stores = [s for s in all_stores if s.id in visible_stores]
+
+    selected_dest_store_id = eligible_dest_stores[0].id if eligible_dest_stores else None
+
+    # Fetch active items with units
+    items = list(
+        (
+            await session.scalars(
+                select(Item)
+                .options(selectinload(Item.unit))
+                .where(Item.is_active.is_(True))
+                .order_by(Item.name)
+            )
+        ).all()
+    )
+
+    return render(
+        request,
+        "transfer_new.html",
+        current_user,
+        all_stores=all_stores,
+        eligible_dest_stores=eligible_dest_stores,
+        selected_dest_store_id=selected_dest_store_id,
+        items=items,
+        is_directorate=is_directorate,
+        today=date.today(),
+        error=request.query_params.get("error"),
+        success=request.query_params.get("success"),
+    )
+
+
+@router.post("/app/transfers/new", include_in_schema=False)
+async def create_transfer_web(
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    form = await request.form()
+    try:
+        source_store_id = int(str(form.get("source_store_id") or "0"))
+        destination_store_id = int(str(form.get("destination_store_id") or "0"))
+        if not source_store_id or not destination_store_id:
+            raise HTTPException(422, "Source and destination stores are required")
+        if source_store_id == destination_store_id:
+            raise HTTPException(422, "Source Store and Destination Store must be different")
+
+        transfer_mode = str(form.get("transfer_mode") or "PULL").upper()
+        transfer_date_str = form.get("transfer_date")
+        transfer_date = date.fromisoformat(str(transfer_date_str)) if transfer_date_str else date.today()
+        remarks = str(form.get("remarks") or "").strip() or None
+
+        item_ids = repeated(form, "item_id")
+        unit_ids = repeated(form, "unit_id")
+        qtys = repeated(form, "requested_quantity")
+        line_remarks = repeated(form, "line_remarks")
+
+        lines: list[TransferCreateLine] = []
+        for i in range(len(item_ids)):
+            if not item_ids[i]:
+                continue
+            iid = int(item_ids[i])
+            uid = int(unit_ids[i]) if (i < len(unit_ids) and unit_ids[i]) else None
+            if not uid:
+                item = await session.get(Item, iid)
+                uid = item.unit_id if item else 1
+            qty = form_decimal(qtys[i]) if i < len(qtys) else Decimal("0")
+            lr = line_remarks[i].strip() if (i < len(line_remarks) and line_remarks[i]) else None
+            lines.append(
+                TransferCreateLine(
+                    item_id=iid,
+                    unit_id=uid,
+                    requested_quantity=qty,
+                    remarks=lr,
+                )
+            )
+
+        if not lines:
+            raise HTTPException(422, "At least one transfer item line is required")
+
+        payload = TransferCreateRequest(
+            source_store_id=source_store_id,
+            destination_store_id=destination_store_id,
+            transfer_date=transfer_date,
+            transfer_mode=transfer_mode,
+            remarks=remarks,
+            lines=lines,
+        )
+
+        transfer = await TransferService(session).create(payload, current_user.id)
+        return redirect_with_success(
+            f"/app/transfers/{transfer.id}",
+            f"Transfer {transfer.transfer_no} created successfully ({transfer.status}).",
+        )
+    except (HTTPException, ValueError) as exc:
+        await session.rollback()
+        return redirect_with_error(
+            "/app/transfers/new",
+            exc.detail if isinstance(exc, HTTPException) else str(exc),
+        )
+
+
+@router.get("/app/transfers/{transfer_id}", include_in_schema=False)
+async def transfer_detail_page(
+    transfer_id: int,
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    perms = permission_codes(current_user)
+    transfer_perms = {
+        "STOCK_TRANSFER_VIEW",
+        "STOCK_TRANSFER_CREATE",
+        "STOCK_TRANSFER_APPROVE_BRANCH",
+        "STOCK_TRANSFER_APPROVE_DIRECTORATE",
+        "STOCK_TRANSFER_AUTHORIZE_SUPPLY",
+        "STOCK_TRANSFER_DISPATCH",
+        "STOCK_TRANSFER_RECEIVE",
+    }
+    if not perms.intersection(transfer_perms):
+        raise HTTPException(403, "User lacks transfer access permission")
+
+    transfer = await session.scalar(
+        select(StockTransfer)
+        .options(
+            selectinload(StockTransfer.lines).selectinload(StockTransferLine.item),
+            selectinload(StockTransfer.lines).selectinload(StockTransferLine.unit),
+            selectinload(StockTransfer.lines).selectinload(StockTransferLine.asset_links).selectinload(TransferLineAsset.asset),
+        )
+        .where(StockTransfer.id == transfer_id)
+    )
+    if transfer is None:
+        raise HTTPException(404, "Stock transfer not found")
+
+    auth = AuthorizationService(session)
+    visible = await auth.get_visible_stores(current_user.id)
+    if visible is not None and transfer.source_store_id not in visible and transfer.destination_store_id not in visible:
+        if not perms.intersection({"STOCK_TRANSFER_APPROVE_DIRECTORATE"}) and not is_system_admin(current_user):
+            raise HTTPException(403, "User is not authorized to view this transfer")
+
+    source_store = await session.get(Store, transfer.source_store_id)
+    dest_store = await session.get(Store, transfer.destination_store_id)
+    source_office = await session.get(Office, source_store.office_id) if source_store and source_store.office_id else None
+    dest_office = await session.get(Office, dest_store.office_id) if dest_store and dest_store.office_id else None
+
+    created_user = await session.get(User, transfer.created_by) if transfer.created_by else None
+    branch_appr_user = await session.get(User, transfer.branch_approved_by) if transfer.branch_approved_by else None
+    dir_appr_user = await session.get(User, transfer.directorate_approved_by) if transfer.directorate_approved_by else None
+    supply_auth_user = await session.get(User, transfer.supply_authorized_by) if transfer.supply_authorized_by else None
+    dispatch_user = await session.get(User, transfer.dispatched_by) if transfer.dispatched_by else None
+    received_user = await session.get(User, transfer.received_by) if transfer.received_by else None
+    rejected_user = await session.get(User, transfer.rejected_by) if transfer.rejected_by else None
+
+    can_approve_branch = "STOCK_TRANSFER_APPROVE_BRANCH" in perms and (
+        visible is None or transfer.destination_store_id in visible or is_system_admin(current_user)
+    )
+    can_approve_directorate = "STOCK_TRANSFER_APPROVE_DIRECTORATE" in perms or is_system_admin(current_user)
+    can_authorize_supply = "STOCK_TRANSFER_AUTHORIZE_SUPPLY" in perms and (
+        visible is None or transfer.source_store_id in visible or is_system_admin(current_user)
+    )
+    can_dispatch = "STOCK_TRANSFER_DISPATCH" in perms and (
+        visible is None or transfer.source_store_id in visible or is_system_admin(current_user)
+    )
+    can_receive = "STOCK_TRANSFER_RECEIVE" in perms and (
+        visible is None or transfer.destination_store_id in visible or is_system_admin(current_user)
+    )
+
+    stock_svc = StockService(session)
+    source_available = {}
+    for line in transfer.lines:
+        bal = await stock_svc.current_balance(transfer.source_store_id, transfer.financial_year_id, line.item_id)
+        source_available[line.item_id] = bal
+
+    return render(
+        request,
+        "transfer_detail.html",
+        current_user,
+        transfer=transfer,
+        source_store=source_store,
+        destination_store=dest_store,
+        source_office=source_office,
+        destination_office=dest_office,
+        created_user=created_user,
+        branch_appr_user=branch_appr_user,
+        dir_appr_user=dir_appr_user,
+        supply_auth_user=supply_auth_user,
+        dispatch_user=dispatch_user,
+        received_user=received_user,
+        rejected_user=rejected_user,
+        can_approve_branch=can_approve_branch,
+        can_approve_directorate=can_approve_directorate,
+        can_authorize_supply=can_authorize_supply,
+        can_dispatch=can_dispatch,
+        can_receive=can_receive,
+        source_available=source_available,
+        today=date.today(),
+        error=request.query_params.get("error"),
+        success=request.query_params.get("success"),
+    )
+
+
+@router.post("/app/transfers/{transfer_id}/approve-branch", include_in_schema=False)
+async def approve_branch_transfer_web(
+    transfer_id: int,
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    form = await request.form()
+    try:
+        remarks = str(form.get("remarks") or "").strip() or None
+        t_line_ids = repeated(form, "transfer_line_id")
+        appr_qtys = repeated(form, "approved_quantity")
+        lines = []
+        if t_line_ids and appr_qtys:
+            for i in range(len(t_line_ids)):
+                lines.append(TransferApprovalLine(
+                    transfer_line_id=int(t_line_ids[i]),
+                    approved_quantity=form_decimal(appr_qtys[i]),
+                ))
+        payload = TransferApproveBranchRequest(remarks=remarks, lines=lines if lines else None)
+        await TransferService(session).approve_branch(transfer_id, payload, current_user.id)
+        return redirect_with_success(
+            f"/app/transfers/{transfer_id}",
+            "Transfer reviewed and recommended by Branch Head successfully.",
+        )
+    except (HTTPException, ValueError) as exc:
+        await session.rollback()
+        return redirect_with_error(
+            f"/app/transfers/{transfer_id}",
+            exc.detail if isinstance(exc, HTTPException) else str(exc),
+        )
+
+
+@router.post("/app/transfers/{transfer_id}/approve-directorate", include_in_schema=False)
+async def approve_directorate_transfer_web(
+    transfer_id: int,
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    form = await request.form()
+    try:
+        remarks = str(form.get("remarks") or "").strip() or None
+        t_line_ids = repeated(form, "transfer_line_id")
+        appr_qtys = repeated(form, "approved_quantity")
+        lines = []
+        if t_line_ids and appr_qtys:
+            for i in range(len(t_line_ids)):
+                lines.append(TransferApprovalLine(
+                    transfer_line_id=int(t_line_ids[i]),
+                    approved_quantity=form_decimal(appr_qtys[i]),
+                ))
+        payload = TransferApproveDirectorateRequest(remarks=remarks, lines=lines if lines else None)
+        await TransferService(session).approve_directorate(transfer_id, payload, current_user.id)
+        return redirect_with_success(
+            f"/app/transfers/{transfer_id}",
+            "Directorate approval granted successfully.",
+        )
+    except (HTTPException, ValueError) as exc:
+        await session.rollback()
+        return redirect_with_error(
+            f"/app/transfers/{transfer_id}",
+            exc.detail if isinstance(exc, HTTPException) else str(exc),
+        )
+
+
+@router.post("/app/transfers/{transfer_id}/authorize-supply", include_in_schema=False)
+async def authorize_supply_transfer_web(
+    transfer_id: int,
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    form = await request.form()
+    try:
+        remarks = str(form.get("remarks") or "").strip() or None
+        payload = TransferAuthorizeSupplyRequest(remarks=remarks)
+        await TransferService(session).authorize_supplying_branch(transfer_id, payload, current_user.id)
+        return redirect_with_success(
+            f"/app/transfers/{transfer_id}",
+            "Supplying Branch authorization granted. Transfer is ready for physical dispatch.",
+        )
+    except (HTTPException, ValueError) as exc:
+        await session.rollback()
+        return redirect_with_error(
+            f"/app/transfers/{transfer_id}",
+            exc.detail if isinstance(exc, HTTPException) else str(exc),
+        )
+
+
+@router.post("/app/transfers/{transfer_id}/reject", include_in_schema=False)
+async def reject_transfer_web(
+    transfer_id: int,
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    form = await request.form()
+    try:
+        reason = str(form.get("reason") or "").strip()
+        if not reason:
+            raise HTTPException(422, "A rejection reason is required")
+        payload = TransferRejectRequest(reason=reason)
+        await TransferService(session).reject(transfer_id, payload, current_user.id)
+        return redirect_with_success(
+            f"/app/transfers/{transfer_id}",
+            "Transfer request has been rejected.",
+        )
+    except (HTTPException, ValueError) as exc:
+        await session.rollback()
+        return redirect_with_error(
+            f"/app/transfers/{transfer_id}",
+            exc.detail if isinstance(exc, HTTPException) else str(exc),
+        )
+
+
+@router.post("/app/transfers/{transfer_id}/dispatch", include_in_schema=False)
+async def dispatch_transfer_web(
+    transfer_id: int,
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    form = await request.form()
+    try:
+        transfer_date_str = form.get("transfer_date")
+        transfer_date = date.fromisoformat(str(transfer_date_str)) if transfer_date_str else date.today()
+        vehicle_no = str(form.get("vehicle_no") or "").strip() or None
+        received_by_name = str(form.get("received_by_name") or "").strip() or None
+        remarks = str(form.get("remarks") or "").strip() or None
+
+        t_line_ids = repeated(form, "transfer_line_id")
+        qtys = repeated(form, "dispatch_quantity")
+        lines = []
+        for i in range(len(t_line_ids)):
+            lines.append(TransferDispatchLine(
+                transfer_line_id=int(t_line_ids[i]),
+                dispatch_quantity=form_decimal(qtys[i]),
+            ))
+
+        payload = TransferDispatchRequest(
+            transfer_date=transfer_date,
+            vehicle_no=vehicle_no,
+            received_by_name=received_by_name,
+            remarks=remarks,
+            lines=lines,
+        )
+        await TransferService(session).dispatch_transfer(transfer_id, payload, current_user.id)
+        return redirect_with_success(
+            f"/app/transfers/{transfer_id}",
+            "Stock issued and outward gate pass generated successfully.",
+        )
+    except (HTTPException, ValueError) as exc:
+        await session.rollback()
+        return redirect_with_error(
+            f"/app/transfers/{transfer_id}",
+            exc.detail if isinstance(exc, HTTPException) else str(exc),
+        )
 
 
 @router.post("/app/transfers/{transfer_id}/receive", include_in_schema=False)
@@ -1420,11 +1864,19 @@ async def receive_transfer_web(transfer_id: int, request: Request, current_user:
     form = await request.form()
     try:
         ids, qtys = repeated(form, "transfer_line_id"), repeated(form, "received_quantity")
-        payload = TransferReceiveRequest(receive_date=date.fromisoformat(str(form["receive_date"])), remarks=None, lines=[TransferReceiveLine(transfer_line_id=int(ids[i]), received_quantity=form_decimal(qtys[i])) for i in range(len(ids))])
+        receive_date_str = form.get("receive_date")
+        receive_date = date.fromisoformat(str(receive_date_str)) if receive_date_str else date.today()
+        remarks = str(form.get("remarks") or "").strip() or None
+        payload = TransferReceiveRequest(
+            receive_date=receive_date,
+            remarks=remarks,
+            lines=[TransferReceiveLine(transfer_line_id=int(ids[i]), received_quantity=form_decimal(qtys[i])) for i in range(len(ids))],
+        )
         await TransferService(session).receive(transfer_id, payload, current_user.id)
-        return redirect_with_success("/app/transfers", "Transfer received successfully.")
+        return redirect_with_success(f"/app/transfers/{transfer_id}", "Stock received and accepted into store successfully.")
     except (HTTPException, ValueError) as exc:
-        await session.rollback(); return redirect_with_error("/app/transfers", exc.detail if isinstance(exc, HTTPException) else str(exc))
+        await session.rollback()
+        return redirect_with_error(f"/app/transfers/{transfer_id}", exc.detail if isinstance(exc, HTTPException) else str(exc))
 
 
 @router.get("/app/my-activity", include_in_schema=False)
@@ -1639,6 +2091,188 @@ async def outward_pass_pdf(issue_id: int, current_user: User | RedirectResponse 
     cols=[("item","Item"),("unit","Unit"),("quantity","Quantity")]
     subtitle=f"Pass reference: {issue.issue_no} | Date: {issue.issue_date} | From: {store.name if store else issue.source_store_id} | To: {office.name if office else issue.destination_office_id}{(' / '+section.name) if section else ''}"
     return pdf_response("Outward Pass",cols,rows,subtitle)
+
+
+@router.get("/app/transfers/{transfer_id}/gate-pass", include_in_schema=False)
+async def transfer_gate_pass_page(
+    transfer_id: int,
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    perms = permission_codes(current_user)
+    if not perms.intersection({"STOCK_TRANSFER_VIEW", "STOCK_TRANSFER_DISPATCH", "STOCK_TRANSFER_RECEIVE", "REQUISITION_VIEW", "REGISTER_VIEW"}):
+        raise HTTPException(403, "User lacks transfer gate pass access")
+
+    transfer = await session.scalar(
+        select(StockTransfer)
+        .options(
+            selectinload(StockTransfer.lines).selectinload(StockTransferLine.item),
+            selectinload(StockTransfer.lines).selectinload(StockTransferLine.unit),
+            selectinload(StockTransfer.lines).selectinload(StockTransferLine.asset_links).selectinload(TransferLineAsset.asset),
+        )
+        .where(StockTransfer.id == transfer_id)
+    )
+    if transfer is None:
+        raise HTTPException(404, "Stock transfer not found")
+
+    auth = AuthorizationService(session)
+    visible = await auth.get_visible_stores(current_user.id)
+    if visible is not None and transfer.source_store_id not in visible and transfer.destination_store_id not in visible:
+        raise HTTPException(403, "User is not authorized to view this transfer gate pass")
+
+    source_store = await session.get(Store, transfer.source_store_id)
+    dest_store = await session.get(Store, transfer.destination_store_id)
+    dest_office = await session.get(Office, dest_store.office_id) if dest_store else None
+    requisition = await session.scalar(
+        select(CentralStoreRequisition).where(CentralStoreRequisition.id == transfer.requisition_id)
+    )
+    fy = await session.get(FinancialYear, transfer.financial_year_id)
+    dispatched_user = await session.get(User, transfer.dispatched_by) if transfer.dispatched_by else None
+
+    total_qty = sum((line.quantity for line in transfer.lines), Decimal("0"))
+    return render(
+        request,
+        "transfer_gate_pass.html",
+        current_user,
+        transfer=transfer,
+        requisition=requisition,
+        source_store=source_store,
+        destination_store=dest_store,
+        destination_office=dest_office,
+        fy=fy,
+        dispatched_user=dispatched_user,
+        total_qty=total_qty,
+        error=request.query_params.get("error"),
+        success=request.query_params.get("success"),
+    )
+
+
+@router.post("/app/transfers/{transfer_id}/gate-pass", include_in_schema=False)
+async def update_transfer_gate_pass_web(
+    transfer_id: int,
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    form = await request.form()
+    vehicle_no = str(form.get("vehicle_no") or "").strip() or None
+    received_by_name = str(form.get("received_by_name") or "").strip() or None
+    try:
+        await TransferService(session).update_gate_pass_details(
+            transfer_id, vehicle_no, received_by_name, current_user.id
+        )
+        return redirect_with_success(
+            f"/app/transfers/{transfer_id}/gate-pass", "Gate pass details updated successfully."
+        )
+    except (HTTPException, ValueError) as exc:
+        await session.rollback()
+        return redirect_with_error(
+            f"/app/transfers/{transfer_id}/gate-pass",
+            exc.detail if isinstance(exc, HTTPException) else str(exc),
+        )
+
+
+@router.get("/app/transfers/{transfer_id}/gate-pass.pdf", include_in_schema=False)
+async def transfer_gate_pass_pdf_download(
+    transfer_id: int,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    perms = permission_codes(current_user)
+    if not perms.intersection({"STOCK_TRANSFER_VIEW", "STOCK_TRANSFER_DISPATCH", "STOCK_TRANSFER_RECEIVE", "REQUISITION_VIEW", "REGISTER_VIEW"}):
+        raise HTTPException(403, "User lacks transfer gate pass access")
+
+    transfer = await session.scalar(
+        select(StockTransfer)
+        .options(
+            selectinload(StockTransfer.lines).selectinload(StockTransferLine.item),
+            selectinload(StockTransfer.lines).selectinload(StockTransferLine.unit),
+            selectinload(StockTransfer.lines).selectinload(StockTransferLine.asset_links).selectinload(TransferLineAsset.asset),
+        )
+        .where(StockTransfer.id == transfer_id)
+    )
+    if transfer is None:
+        raise HTTPException(404, "Stock transfer not found")
+
+    auth = AuthorizationService(session)
+    visible = await auth.get_visible_stores(current_user.id)
+    if visible is not None and transfer.source_store_id not in visible and transfer.destination_store_id not in visible:
+        raise HTTPException(403, "User is not authorized to view this transfer gate pass")
+
+    source_store = await session.get(Store, transfer.source_store_id)
+    dest_store = await session.get(Store, transfer.destination_store_id)
+    dest_office = await session.get(Office, dest_store.office_id) if dest_store else None
+    requisition = await session.scalar(
+        select(CentralStoreRequisition).where(CentralStoreRequisition.id == transfer.requisition_id)
+    )
+    fy = await session.get(FinancialYear, transfer.financial_year_id)
+    dispatched_user = await session.get(User, transfer.dispatched_by) if transfer.dispatched_by else None
+
+    info = {
+        "transfer_no": transfer.transfer_no,
+        "transfer_date": str(transfer.transfer_date),
+        "requisition_no": requisition.requisition_no if requisition else "—",
+        "requisition_date": str(requisition.requisition_date) if requisition else "—",
+        "source_store": source_store.name if source_store else "Central Store",
+        "destination_store": dest_store.name if dest_store else "—",
+        "destination_office": dest_office.name if dest_office else "—",
+        "vehicle_no": transfer.vehicle_no,
+        "received_by_name": transfer.received_by_name,
+        "fy_name": fy.year_name if fy else "—",
+        "dispatched_by_name": dispatched_user.full_name if dispatched_user else "Central Storekeeper",
+    }
+    items = []
+    for line in transfer.lines:
+        asset_nums = (
+            ", ".join([al.asset.asset_code for al in line.asset_links if al.asset and al.asset.asset_code])
+            if line.asset_links
+            else ""
+        )
+        items.append({
+            "item_code": line.item.code if line.item else line.item_id,
+            "item_name": line.item.name if line.item else "—",
+            "unit_code": line.unit.code if line.unit else line.unit_id,
+            "quantity": str(line.quantity),
+            "remarks": line.remarks,
+            "asset_numbers": asset_nums,
+        })
+    pdf_buffer = make_transfer_gate_pass_pdf(info, items)
+    safe_no = transfer.transfer_no.lower().replace("/", "_").replace("-", "_")
+    filename = f"gate_pass_{safe_no}.pdf"
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/app/requisitions/{requisition_id}/gate-pass", include_in_schema=False)
+async def requisition_gate_pass_page(
+    requisition_id: int,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    transfer = await session.scalar(
+        select(StockTransfer)
+        .where(StockTransfer.requisition_id == requisition_id)
+        .order_by(StockTransfer.id.desc())
+        .limit(1)
+    )
+    if transfer is None:
+        return redirect_with_error(
+            f"/app/requisitions/{requisition_id}",
+            "No stock transfer has been dispatched yet for this requisition.",
+        )
+    return RedirectResponse(f"/app/transfers/{transfer.id}/gate-pass", status_code=303)
 
 
 @router.get("/app/registers/item-stock.pdf", include_in_schema=False)

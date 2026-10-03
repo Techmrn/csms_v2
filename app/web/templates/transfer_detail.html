@@ -1,0 +1,388 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Stock Transfer {{ transfer.transfer_no }}{% endblock %}
+{% block page_title %}Transfer {{ transfer.transfer_no }}{% endblock %}
+
+{% block content %}
+<style>
+.stepper {
+  display: flex;
+  justify-content: space-between;
+  margin: 18px 0 24px 0;
+  position: relative;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  text-align: center;
+  position: relative;
+}
+.step-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  background: #e2e8f0;
+  color: #64748b;
+  border: 2px solid #cbd5e1;
+}
+.step-item.active .step-circle {
+  background: #0f766e;
+  color: #ffffff;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.2);
+}
+.step-item.completed .step-circle {
+  background: #10b981;
+  color: #ffffff;
+  border-color: #10b981;
+}
+.step-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.2;
+}
+.step-item.active .step-label {
+  color: #0f766e;
+  font-weight: 700;
+}
+.step-item.completed .step-label {
+  color: #0f172a;
+}
+</style>
+
+<div class="context-bar">
+  <div>
+    <div class="context-title">Stock Transfer Review</div>
+    <div class="muted">Inter-Store Movement: {{ source_store.name if source_store else transfer.source_store_id }} &rarr; {{ destination_store.name if destination_store else transfer.destination_store_id }}</div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    {% if transfer.status in ['DISPATCHED', 'RECEIVED', 'DISCREPANCY', 'CLOSED'] %}
+    <a class="button primary" href="/app/transfers/{{ transfer.id }}/gate-pass">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px; vertical-align:-2px;"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+      Outward Gate Pass (A4)
+    </a>
+    <a class="button" href="/app/transfers/{{ transfer.id }}/gate-pass.pdf">Download PDF</a>
+    {% endif %}
+    <a class="button" href="/app/transfers">All Transfers</a>
+  </div>
+</div>
+
+<!-- Workflow Stepper -->
+<div class="stepper">
+  <div class="step-item {% if transfer.status != 'REJECTED' %}completed{% endif %}">
+    <div class="step-circle">&#10003;</div>
+    <div class="step-label">1. Request<br><span class="muted">({{ transfer.transfer_mode }})</span></div>
+  </div>
+  <div class="step-item {% if transfer.status in ['BRANCH_APPROVED', 'DIRECTORATE_APPROVED', 'SUPPLY_AUTHORIZED', 'READY_FOR_DISPATCH', 'APPROVED', 'DISPATCHED', 'RECEIVED', 'CLOSED'] %}completed{% elif transfer.status == 'SUBMITTED' %}active{% endif %}">
+    <div class="step-circle">2</div>
+    <div class="step-label">2. Requesting<br>Branch Review</div>
+  </div>
+  <div class="step-item {% if transfer.status in ['DIRECTORATE_APPROVED', 'SUPPLY_AUTHORIZED', 'READY_FOR_DISPATCH', 'APPROVED', 'DISPATCHED', 'RECEIVED', 'CLOSED'] %}completed{% elif transfer.status == 'BRANCH_APPROVED' %}active{% endif %}">
+    <div class="step-circle">3</div>
+    <div class="step-label">3. Directorate<br>Approval</div>
+  </div>
+  <div class="step-item {% if transfer.status in ['READY_FOR_DISPATCH', 'APPROVED', 'DISPATCHED', 'RECEIVED', 'CLOSED'] %}completed{% elif transfer.status == 'DIRECTORATE_APPROVED' %}active{% endif %}">
+    <div class="step-circle">4</div>
+    <div class="step-label">4. Supplying<br>Branch Authorization</div>
+  </div>
+  <div class="step-item {% if transfer.status in ['DISPATCHED', 'RECEIVED', 'CLOSED'] %}completed{% elif transfer.status in ['READY_FOR_DISPATCH', 'APPROVED'] %}active{% endif %}">
+    <div class="step-circle">5</div>
+    <div class="step-label">5. Dispatch &amp;<br>Gate Pass</div>
+  </div>
+  <div class="step-item {% if transfer.status in ['RECEIVED', 'CLOSED'] %}completed{% elif transfer.status == 'DISPATCHED' %}active{% endif %}">
+    <div class="step-circle">6</div>
+    <div class="step-label">6. Physical<br>Receipt</div>
+  </div>
+</div>
+
+<!-- Metadata Card -->
+<div class="card">
+  <div class="grid cols-4" style="gap:16px;">
+    <div><strong>Transfer Reference</strong><br><span style="font-size:15px; font-weight:700; color:#0f766e;">{{ transfer.transfer_no }}</span></div>
+    <div><strong>Transfer Date</strong><br>{{ transfer.transfer_date }}</div>
+    <div><strong>Mode / Flow</strong><br><span class="badge">{{ transfer.transfer_mode }}</span></div>
+    <div><strong>Status</strong><br><span class="badge">{{ transfer.status }}</span></div>
+  </div>
+  <hr style="margin:14px 0; border:0; border-top:1px solid #e2e8f0;">
+  <div class="grid cols-4" style="gap:16px;">
+    <div><strong>Source (Supplying) Store</strong><br>{{ source_store.name if source_store else transfer.source_store_id }}</div>
+    <div><strong>Destination Store</strong><br>{{ destination_store.name if destination_store else transfer.destination_store_id }}</div>
+    <div><strong>Vehicle Number</strong><br>{{ transfer.vehicle_no or '—' }}</div>
+    <div><strong>Person Receiving / Carrier</strong><br>{{ transfer.received_by_name or '—' }}</div>
+  </div>
+  {% if transfer.remarks %}
+  <div style="margin-top:12px; font-size:13px; color:#475569;">
+    <strong>Remarks:</strong> {{ transfer.remarks }}
+  </div>
+  {% endif %}
+  {% if transfer.rejection_reason %}
+  <div class="alert danger" style="margin-top:14px;">
+    <strong>Rejection Reason:</strong> {{ transfer.rejection_reason }} (Rejected at {{ transfer.rejected_at.strftime('%Y-%m-%d %H:%M') if transfer.rejected_at else '' }})
+  </div>
+  {% endif %}
+</div>
+
+<!-- Lines Card -->
+<div class="card" style="margin-top:18px;">
+  <h2>Transfer Items</h2>
+  <div class="table-wrap">
+    <table class="entry-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Item</th>
+          <th>Unit</th>
+          <th>Available at Source</th>
+          <th>Requested</th>
+          <th>Approved</th>
+          <th>Dispatched</th>
+          <th>Received</th>
+          <th>Remarks</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in transfer.lines %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td><strong>{{ line.item.code if line.item else line.item_id }}</strong> — {{ line.item.name if line.item else '' }}</td>
+          <td>{{ line.unit.code if line.unit else line.unit_id }}</td>
+          <td>{{ source_available.get(line.item_id, 0) }}</td>
+          <td>{{ line.requested_quantity }}</td>
+          <td>
+            {% if transfer.status == 'SUBMITTED' and can_approve_branch %}
+              <input form="form-approve-branch" type="number" name="approved_quantity" value="{{ line.approved_quantity if line.approved_quantity is not none else line.requested_quantity }}" min="0" max="{{ line.requested_quantity }}" step="0.001" style="max-width:110px;">
+              <input form="form-approve-branch" type="hidden" name="line_id" value="{{ line.id }}">
+            {% elif transfer.status == 'BRANCH_APPROVED' and can_approve_directorate %}
+              <input form="form-approve-directorate" type="number" name="approved_quantity" value="{{ line.approved_quantity if line.approved_quantity is not none else line.requested_quantity }}" min="0" max="{{ line.requested_quantity }}" step="0.001" style="max-width:110px;">
+              <input form="form-approve-directorate" type="hidden" name="line_id" value="{{ line.id }}">
+            {% elif transfer.status == 'DIRECTORATE_APPROVED' and can_authorize_supply %}
+              <input form="form-authorize-supply" type="number" name="approved_quantity" value="{{ line.approved_quantity if line.approved_quantity is not none else line.requested_quantity }}" min="0" max="{{ line.approved_quantity or line.requested_quantity }}" step="0.001" style="max-width:110px;">
+              <input form="form-authorize-supply" type="hidden" name="line_id" value="{{ line.id }}">
+            {% else %}
+              {{ line.approved_quantity if line.approved_quantity is not none else '—' }}
+            {% endif %}
+          </td>
+          <td>{{ line.quantity }}</td>
+          <td>{{ line.received_quantity }}</td>
+          <td>{{ line.remarks or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ACTION CARDS BASED ON WORKFLOW STAGE -->
+
+<!-- Stage 2: Requesting Branch Head Review -->
+{% if transfer.status == 'SUBMITTED' and can_approve_branch %}
+<div class="card" style="margin-top:18px; border-left:4px solid #0f766e;">
+  <h2>Requesting Branch Head Review &amp; Recommendation</h2>
+  <div class="notice">Review the quantities requested by your branch storekeeper. You can adjust approved quantities before forwarding to Directorate.</div>
+  <form id="form-approve-branch" method="post" action="/app/transfers/{{ transfer.id }}/approve-branch" class="stack">
+    <label>Remarks (Optional)<textarea name="remarks" rows="2" placeholder="Notes for Directorate approval"></textarea></label>
+    <div style="display:flex; gap:10px; margin-top:12px;">
+      <button class="button primary" type="submit">Approve &amp; Forward to Directorate</button>
+      <button class="button danger" type="button" onclick="document.getElementById('reject-dialog').style.display='block';">Reject Transfer</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- Stage 3: Directorate Central Approval -->
+{% if transfer.status == 'BRANCH_APPROVED' and can_approve_directorate %}
+<div class="card" style="margin-top:18px; border-left:4px solid #0f766e;">
+  <h2>Directorate Central Approval</h2>
+  <div class="notice">Directorate approval is required for inter-store stock movement. Verify stock availability and department policies before granting approval.</div>
+  <form id="form-approve-directorate" method="post" action="/app/transfers/{{ transfer.id }}/approve-directorate" class="stack">
+    <label>Directorate Directive / Remarks (Optional)<textarea name="remarks" rows="2" placeholder="Approval directives"></textarea></label>
+    <div style="display:flex; gap:10px; margin-top:12px;">
+      <button class="button primary" type="submit">Grant Directorate Approval</button>
+      <button class="button danger" type="button" onclick="document.getElementById('reject-dialog').style.display='block';">Reject Transfer</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- Stage 4: Supplying Branch Head Authorization -->
+{% if transfer.status == 'DIRECTORATE_APPROVED' and can_authorize_supply %}
+<div class="card" style="margin-top:18px; border-left:4px solid #0f766e;">
+  <h2>Supplying Branch Head Authorization</h2>
+  <div class="notice">Directorate has approved this transfer from your branch store. Authorize your storekeeper to physically issue the items.</div>
+  <form id="form-authorize-supply" method="post" action="/app/transfers/{{ transfer.id }}/authorize-supply" class="stack">
+    <label>Authorization Remarks (Optional)<textarea name="remarks" rows="2" placeholder="Notes for supplying storekeeper"></textarea></label>
+    <div style="display:flex; gap:10px; margin-top:12px;">
+      <button class="button primary" type="submit">Authorize Stock Issue</button>
+      <button class="button danger" type="button" onclick="document.getElementById('reject-dialog').style.display='block';">Reject Transfer</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- Stage 5: Supplying Storekeeper Issue & Gate Pass -->
+{% if transfer.status in ['READY_FOR_DISPATCH', 'APPROVED'] and can_dispatch %}
+<div class="card" style="margin-top:18px; border-left:4px solid #0f766e;">
+  <h2>Physical Stock Issue &amp; Outward Gate Pass</h2>
+  <div class="notice">Physically prepare the items for dispatch from {{ source_store.name }}. You may enter the transport vehicle number and name of person receiving (both are optional). Dispatched quantities will be deducted from your stock ledger upon issue.</div>
+  <form method="post" action="/app/transfers/{{ transfer.id }}/dispatch" class="stack">
+    <div class="grid cols-3" style="gap:14px;">
+      <label>
+        Dispatch Date
+        <input type="date" name="transfer_date" value="{{ today.isoformat() }}" required>
+      </label>
+      <label>
+        Vehicle Number (Optional)
+        <input type="text" name="vehicle_no" placeholder="e.g. KL-01-AB-1234 or Hand Delivery">
+      </label>
+      <label>
+        Person Receiving / Carrier (Optional)
+        <input type="text" name="received_by_name" placeholder="e.g. Driver / Delivery Person Name">
+      </label>
+    </div>
+
+    <div style="margin-top:12px;">
+      <label>Line Dispatch Quantities:</label>
+      <div class="table-wrap" style="margin-top:6px;">
+        <table class="entry-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Available at {{ source_store.name }}</th>
+              <th>Approved Qty</th>
+              <th>Dispatch Qty</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in transfer.lines %}
+            <tr>
+              <td>
+                <input type="hidden" name="transfer_line_id" value="{{ line.id }}">
+                <strong>{{ line.item.code if line.item else line.item_id }}</strong> — {{ line.item.name if line.item else '' }}
+              </td>
+              <td>{{ source_available.get(line.item_id, 0) }}</td>
+              <td>{{ line.approved_quantity or line.requested_quantity }}</td>
+              <td>
+                <input type="number" name="dispatch_quantity" value="{{ line.approved_quantity or line.requested_quantity }}" min="0" max="{{ line.approved_quantity or line.requested_quantity }}" step="0.001" required style="max-width:130px;">
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <label style="margin-top:12px;">
+      Dispatch Remarks (Optional)
+      <textarea name="remarks" rows="2" placeholder="e.g. Dispatched in 2 sealed boxes via department vehicle"></textarea>
+    </label>
+
+    <div class="form-actions" style="margin-top:14px;">
+      <button class="button primary" type="submit">Issue Stock &amp; Generate Outward Gate Pass</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- Stage 6: Requesting Storekeeper Receive Stock -->
+{% if transfer.status == 'DISPATCHED' and can_receive %}
+<div class="card" style="margin-top:18px; border-left:4px solid #10b981;">
+  <h2>Physical Receipt &amp; Stock Acceptance</h2>
+  <div class="notice">Stock has been dispatched from {{ source_store.name }}. Inspect the items delivered and accept them into {{ destination_store.name }}.</div>
+  <form method="post" action="/app/transfers/{{ transfer.id }}/receive" class="stack">
+    <div class="grid cols-2" style="gap:14px;">
+      <label>
+        Receive Date
+        <input type="date" name="receive_date" value="{{ today.isoformat() }}" required>
+      </label>
+      <label>
+        Receipt Remarks (Optional)
+        <input type="text" name="remarks" placeholder="Condition upon receipt">
+      </label>
+    </div>
+
+    <div class="table-wrap" style="margin-top:12px;">
+      <table class="entry-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Dispatched Qty</th>
+            <th>Received &amp; Accepted Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in transfer.lines %}
+          <tr>
+            <td>
+              <input type="hidden" name="transfer_line_id" value="{{ line.id }}">
+              <strong>{{ line.item.code if line.item else line.item_id }}</strong> — {{ line.item.name if line.item else '' }}
+            </td>
+            <td><strong>{{ line.quantity }}</strong></td>
+            <td>
+              <input type="number" name="received_quantity" value="{{ line.quantity }}" min="0" max="{{ line.quantity }}" step="0.001" required style="max-width:140px;">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="form-actions" style="margin-top:14px;">
+      <button class="button primary" type="submit">Accept &amp; Receive Stock into Store</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- Outward Gate Pass Quick View Card when Dispatched or Received -->
+{% if transfer.status in ['DISPATCHED', 'RECEIVED', 'DISCREPANCY', 'CLOSED'] %}
+<div class="card" style="margin-top:18px; border-left:4px solid #0f766e;">
+  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+    <div>
+      <h3 style="margin:0 0 4px 0;">Outward Gate Pass: {{ transfer.transfer_no }}</h3>
+      <div class="muted">
+        Vehicle: <strong>{{ transfer.vehicle_no or '—' }}</strong> &bull;
+        Carrier: <strong>{{ transfer.received_by_name or '—' }}</strong> &bull;
+        Dispatched Date: <strong>{{ transfer.transfer_date }}</strong>
+      </div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <a class="button primary" href="/app/transfers/{{ transfer.id }}/gate-pass">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px; vertical-align:-2px;"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+        View &amp; Print Gate Pass (A4)
+      </a>
+      <a class="button" href="/app/transfers/{{ transfer.id }}/gate-pass.pdf">Download PDF</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Reject Modal Dialog -->
+<div id="reject-dialog" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+  <div style="background:#fff; max-width:480px; margin:100px auto; padding:24px; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+    <h3 style="margin-top:0; color:#dc2626;">Reject Transfer Request</h3>
+    <p class="muted">Please provide a reason for rejecting this transfer.</p>
+    <form method="post" action="/app/transfers/{{ transfer.id }}/reject">
+      <label>
+        Reason for Rejection
+        <textarea name="reason" rows="3" required placeholder="Specify why the transfer cannot be approved or fulfilled" style="width:100%; margin-top:6px;"></textarea>
+      </label>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+        <button type="button" class="button" onclick="document.getElementById('reject-dialog').style.display='none';">Cancel</button>
+        <button type="submit" class="button danger">Confirm Rejection</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

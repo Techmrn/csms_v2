@@ -11,6 +11,7 @@ from app.models.common import TimestampMixin
 if TYPE_CHECKING:
     from app.models.financial_year import FinancialYear
     from app.models.item import Item
+    from app.models.unit import Unit
     from app.models.store import Store
     from app.models.user import User
     from app.models.requisition import CentralStoreRequisition
@@ -22,7 +23,7 @@ class StockTransfer(TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("source_store_id <> destination_store_id", name="source_destination_store_different"),
         CheckConstraint(
-            "status in ('APPROVED','DISPATCHED','RECEIVED','DISCREPANCY','CLOSED','CANCELLED')",
+            "status in ('SUBMITTED','BRANCH_APPROVED','DIRECTORATE_APPROVED','SUPPLY_AUTHORIZED','READY_FOR_DISPATCH','APPROVED','DISPATCHED','RECEIVED','DISCREPANCY','CLOSED','REJECTED','CANCELLED')",
             name="status_valid",
         ),
     )
@@ -39,12 +40,26 @@ class StockTransfer(TimestampMixin, Base):
     destination_store_id: Mapped[int] = mapped_column(
         ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False
     )
-    requisition_id: Mapped[int] = mapped_column(
-        ForeignKey("central_store_requisitions.id", ondelete="RESTRICT"), nullable=False
+    requisition_id: Mapped[int | None] = mapped_column(
+        ForeignKey("central_store_requisitions.id", ondelete="RESTRICT"), nullable=True
     )
-    status: Mapped[str] = mapped_column(String(30), nullable=False, default="APPROVED")
+    transfer_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="PULL")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="SUBMITTED")
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    vehicle_no: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    received_by_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
+    
+    branch_approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    branch_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    directorate_approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    directorate_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    supply_authorized_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    supply_authorized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     dispatched_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
     )
@@ -66,23 +81,30 @@ class StockTransfer(TimestampMixin, Base):
 class StockTransferLine(Base):
     __tablename__ = "stock_transfer_lines"
     __table_args__ = (
-        CheckConstraint("quantity > 0", name="quantity_positive"),
+        CheckConstraint(
+            "requested_quantity > 0 and quantity >= 0 and received_quantity >= 0 and (approved_quantity is null or (approved_quantity >= 0 and approved_quantity <= requested_quantity))",
+            name="quantities_valid",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     transfer_id: Mapped[int] = mapped_column(
         ForeignKey("stock_transfers.id", ondelete="CASCADE"), nullable=False
     )
-    requisition_line_id: Mapped[int] = mapped_column(
-        ForeignKey("central_store_requisition_lines.id", ondelete="RESTRICT"), nullable=False
+    requisition_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("central_store_requisition_lines.id", ondelete="RESTRICT"), nullable=True
     )
     item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="RESTRICT"), nullable=False)
     unit_id: Mapped[int] = mapped_column(ForeignKey("units.id", ondelete="RESTRICT"), nullable=False)
-    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False)
+    requested_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False)
+    approved_quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 3), nullable=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False, default=Decimal("0"))
+    received_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 3), nullable=False, default=Decimal("0"))
     remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     transfer: Mapped[StockTransfer] = relationship(back_populates="lines")
     item: Mapped["Item"] = relationship()
+    unit: Mapped["Unit"] = relationship()
 
     asset_links: Mapped[list["TransferLineAsset"]] = relationship(
         back_populates="transfer_line", cascade="all, delete-orphan", lazy="selectin"
