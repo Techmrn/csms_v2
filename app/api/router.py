@@ -19,6 +19,7 @@ from app.api.routes.stock_control import (
     adjustment_router as stock_adjustment_router,
     unserviceable_router,
 )
+from app.paper_store.api.routes import router as paper_api_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -39,5 +40,6 @@ protected_router.include_router(stock_verification_router)
 protected_router.include_router(stock_adjustment_router)
 protected_router.include_router(unserviceable_router)
 protected_router.include_router(assets_router)
+protected_router.include_router(paper_api_router)
 
 api_router.include_router(protected_router)

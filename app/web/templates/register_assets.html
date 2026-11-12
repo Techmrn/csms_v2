@@ -6,7 +6,17 @@
   <div class="context-title">{{ subtitle }}</div>
   <form method="get" action="{{ request.url.path }}" class="context-form">
     <select name="store_id"><option value="">All visible stores</option>{% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}</select>
+    <input name="search" value="{{ search }}" placeholder="Search asset, serial, item" aria-label="Search assets">
     <button class="button" type="submit">Apply</button>
+    {% set pdf_base = request.url.path ~ '.pdf?' ~ (('store_id=' ~ selected_store.id ~ '&') if selected_store else '') ~ 'search=' ~ (search|urlencode) %}
+    <select id="pdf-paper-size" class="paper-size-select" aria-label="PDF Paper Size" onchange="var b=document.getElementById('download-pdf-btn'); b.href=b.dataset.basePdf+'&paper_size='+encodeURIComponent(this.value);">
+      <option value="auto">PDF: Auto (A4 / A3)</option>
+      <option value="a4_portrait">A4 Portrait</option>
+      <option value="a4_landscape">A4 Landscape</option>
+      <option value="a3_landscape">A3 Landscape</option>
+      <option value="a3_portrait">A3 Portrait</option>
+    </select>
+    <a id="download-pdf-btn" class="button primary" data-base-pdf="{{ pdf_base }}" href="{{ pdf_base }}&paper_size=auto">Download PDF</a>
   </form>
 </div>
 <div class="card table-card"><table><thead><tr><th>Asset No.</th><th>Item</th><th>Serial</th><th>Status</th><th>Store</th><th>Office</th><th>Section</th></tr></thead><tbody>

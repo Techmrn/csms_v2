@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Enter Paper Opening Stock{% endblock %}
+{% block page_title %}Enter Paper Opening Stock{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">PAPER WAREHOUSE · FIRST-TIME OPENING STOCK</div>
+    <h1>Post Warehouse Opening Stock</h1>
+    <p class="muted small">Enter physical opening balance in Reams + Sheets for Sheet items, or Kilograms (KG) for Reel paper.</p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/app/paper/opening-stock">← Back to Opening Stock</a>
+  </div>
+</div>
+
+<form method="post" action="/app/paper/opening-stock/new" class="card form-card stack" id="paper-opening-form">
+  <div class="grid cols-3">
+    <label>
+      Paper Warehouse *
+      <select name="store_id" required>
+        {% for st in paper_stores %}
+        <option value="{{ st.id }}" {% if selected_store and selected_store.id == st.id %}selected{% endif %}>
+          {{ st.name }} ({{ st.office.name if st.office else st.code }})
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Financial Year *
+      <select name="financial_year_id" required>
+        {% for fy in financial_years %}
+        <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>
+          {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Opening Date *
+      <input type="date" name="opening_date" value="{{ today }}" required>
+    </label>
+  </div>
+
+  <label>
+    Remarks / Audit Notes
+    <input name="remarks" placeholder="First-time physical verification / warehouse opening balance">
+  </label>
+
+  <div class="section-head" style="margin-top: 12px;">
+    <div>
+      <div class="eyebrow">OPENING PAPER LINES</div>
+      <h3>Paper Varieties &amp; Quantities</h3>
+    </div>
+    <button type="button" class="button sm" onclick="addOpeningRow()">+ Add Paper Row</button>
+  </div>
+
+  <div class="card table-card" style="overflow-x: auto;">
+    <table id="opening-lines-table">
+      <thead>
+        <tr>
+          <th style="min-width: 260px;">Paper Item *</th>
+          <th>Form</th>
+          <th style="min-width: 260px;">Opening Quantity *</th>
+          <th>Reels (Optional)</th>
+          <th>Remarks</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="opening-rows-body">
+        <tr class="opening-row">
+          <td>
+            <select name="paper_item_id" class="paper-select" onchange="syncRowForm(this)" required>
+              <option value="">-- Select Paper Variety --</option>
+              {% for item in paper_items %}
+              <option value="{{ item.id }}"
+                      data-form="{{ item.form_type }}"
+                      data-spr="{{ item.sheets_per_ream or 500 }}">
+                {{ item.code }} — {{ item.name }} ({{ item.gsm }} GSM · {{ item.form_type }})
+              </option>
+              {% endfor %}
+            </select>
+          </td>
+          <td><span class="badge form-badge">—</span></td>
+          <td>
+            <div class="sheet-box split-qty">
+              <input type="number" name="reams" min="0" step="1" value="0" aria-label="Reams">
+              <span class="unit-tag">Reams</span>
+              <input type="number" name="sheets" min="0" step="1" value="0" aria-label="Loose Sheets">
+              <span class="unit-tag">Sheets</span>
+            </div>
+            <div class="reel-box" style="display: none;">
+              <div class="split-qty">
+                <input type="number" name="weight_kg" min="0" step="0.001" value="0" aria-label="Weight in KG">
+                <span class="unit-tag">KG</span>
+              </div>
+            </div>
+            <div class="muted small spr-hint" style="margin-top: 4px;"></div>
+          </td>
+          <td>
+            <input type="number" name="reel_count" min="0" step="1" placeholder="Reels" style="max-width: 90px;">
+          </td>
+          <td>
+            <input type="text" name="line_remarks" placeholder="Rack / Batch note">
+          </td>
+          <td>
+            <button type="button" class="button sm" onclick="removeOpeningRow(this)">Remove</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="form-actions">
+    <a class="button" href="/app/paper/opening-stock">Cancel</a>
+    <button type="submit" class="button primary">Post Opening Stock to Ledger</button>
+  </div>
+</form>
+
+<script>
+function syncRowForm(sel) {
+  const row = sel.closest('tr');
+  const opt = sel.options[sel.selectedIndex];
+  const form = opt ? (opt.dataset.form || '') : '';
+  const spr = opt ? (opt.dataset.spr || '500') : '500';
+  const badge = row.querySelector('.form-badge');
+  const sheetBox = row.querySelector('.sheet-box');
+  const reelBox = row.querySelector('.reel-box');
+  const hint = row.querySelector('.spr-hint');
+  const rc = row.querySelector('input[name="reel_count"]');
+
+  if (form === 'REEL') {
+    badge.textContent = 'REEL (KG)';
+    badge.className = 'badge warn form-badge';
+    sheetBox.style.display = 'none';
+    reelBox.style.display = 'block';
+    row.querySelector('input[name="reams"]').value = '0';
+    row.querySelector('input[name="sheets"]').value = '0';
+    rc.style.visibility = 'visible';
+    hint.textContent = 'Reel inventory tracked in Kilograms (KG)';
+  } else if (form === 'SHEET') {
+    badge.textContent = 'SHEET (REAM)';
+    badge.className = 'badge ok form-badge';
+    sheetBox.style.display = 'flex';
+    reelBox.style.display = 'none';
+    row.querySelector('input[name="weight_kg"]').value = '0';
+    rc.value = '';
+    rc.style.visibility = 'hidden';
+    hint.textContent = '1 Ream = ' + spr + ' Sheets';
+  } else {
+    badge.textContent = '—';
+    badge.className = 'badge form-badge';
+    sheetBox.style.display = 'flex';
+    reelBox.style.display = 'none';
+    hint.textContent = '';
+  }
+}
+
+function addOpeningRow() {
+  const tbody = document.getElementById('opening-rows-body');
+  const template = tbody.querySelector('tr.opening-row').cloneNode(true);
+  template.querySelector('select[name="paper_item_id"]').selectedIndex = 0;
+  template.querySelector('input[name="reams"]').value = '0';
+  template.querySelector('input[name="sheets"]').value = '0';
+  template.querySelector('input[name="weight_kg"]').value = '0';
+  template.querySelector('input[name="reel_count"]').value = '';
+  template.querySelector('input[name="line_remarks"]').value = '';
+  syncRowForm(template.querySelector('select[name="paper_item_id"]'));
+  tbody.appendChild(template);
+}
+
+function removeOpeningRow(btn) {
+  const tbody = document.getElementById('opening-rows-body');
+  if (tbody.querySelectorAll('tr.opening-row').length > 1) {
+    btn.closest('tr').remove();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#opening-rows-body select[name="paper_item_id"]').forEach(syncRowForm);
+});
+</script>
+{% endblock %}
+

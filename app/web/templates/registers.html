@@ -1,34 +1,122 @@
 {% extends "base.html" %}
-{% block title %}CSMS V2 — Registers{% endblock %}
-{% block page_title %}Registers{% endblock %}
+{% block title %}CSMS V2 — Store &amp; Asset Registers{% endblock %}
+{% block page_title %}General Store Registers{% endblock %}
 {% block content %}
-<div class="context-bar">
-  <div class="context-title">Operational registers</div>
-  <form method="get" action="/app/registers" class="context-form">
-    <select name="store_id">
-      <option value="">All visible stores</option>
-      {% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id == store.id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}
-    </select>
-    <select name="financial_year_id">
-      <option value="">All financial years</option>
-      {% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>{{ fy.year_name }}</option>{% endfor %}
-    </select>
-    <button class="button" type="submit">Apply</button>
-  </form>
+<div class="page-header">
+  <div>
+    <div class="eyebrow">GENERAL STORE &amp; ASSETS · STATUTORY REGISTERS</div>
+    <h1>General Store &amp; Asset Registers</h1>
+    <p class="muted small">Consumable &amp; asset registers for Directorate and Branch Stores. Paper Warehouse registers
+      live separately under Paper Warehouse.</p>
+  </div>
 </div>
 
-<div class="grid grid-3">
-  <a class="card" href="/app/registers/issues{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Issue Register</strong><div class="muted">All posted issues, destinations and source indents.</div></a>
-  <a class="card" href="/app/registers/distribution{% if selected_store or selected_fy %}?{% if selected_store %}store_id={{ selected_store.id }}{% endif %}{% if selected_store and selected_fy %}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}"><strong>Distribution Register</strong><div class="muted">Item-wise distribution derived from Issue lines.</div></a>
-  <a class="card" href="/app/registers/transactions{% if selected_store or selected_fy %}?{% if selected_store %}store_id={{ selected_store.id }}{% endif %}{% if selected_store and selected_fy %}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}"><strong>Transaction Register</strong><div class="muted">Unified stock movement history with source documents.</div></a>
-  <a class="card" href="/app/registers/item-stock{% if selected_store or selected_fy %}?{% if selected_store %}store_id={{ selected_store.id }}{% endif %}{% if selected_store and selected_fy %}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}"><strong>Item Stock Register</strong><div class="muted">Item-wise running ledger from StockMovement.</div></a>
-  <a class="card" href="/app/assets{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Asset Register</strong><div class="muted">Individual asset custody and lifecycle records.</div></a>
-  <a class="card" href="/app/registers/computers{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Computer Register</strong><div class="muted">Computer-related assets as a filtered Asset Register view.</div></a>
-  <a class="card" href="/app/registers/e-waste{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>E-Waste Register</strong><div class="muted">Assets in the current unserviceable/disposal lifecycle.</div></a>
-  <a class="card" href="/app/opening-stock{% if selected_store or selected_fy %}?{% if selected_store %}store_id={{ selected_store.id }}{% endif %}{% if selected_store and selected_fy %}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}"><strong>Opening Stock Register</strong><div class="muted">Opening-stock documents by store and financial year.</div></a>
-  <a class="card" href="/app/receipts{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Goods Receipt Register</strong><div class="muted">Receipt documents and posting status.</div></a>
-  <a class="card" href="/app/returns{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Return Register</strong><div class="muted">CSMS issue returns and legacy/manual returns received into the store.</div></a>
-  <a class="card" href="/app/transfers{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Transfer Register</strong><div class="muted">Inter-store transfer documents and receipt status.</div></a>
-  <a class="card" href="/app/petty-purchases{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}"><strong>Petty Purchase Register</strong><div class="muted">Temporary and normal consumable acquisitions.</div></a>
+<form class="context-bar" method="get" action="/app/registers">
+  <div class="ctx-field">
+    <span class="ctx-label">General Store</span>
+    <select name="store_id" onchange="this.form.submit()">
+      <option value="">All visible general stores</option>
+      {% for st in stores %}
+      <option value="{{ st.id }}" {% if selected_store and selected_store.id==st.id %}selected{% endif %}>
+        {{ st.name }} ({{ st.code }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctx-field">
+    <span class="ctx-label">Financial Year</span>
+    <select name="financial_year_id" onchange="this.form.submit()">
+      <option value="">All financial years</option>
+      {% for fy in financial_years %}
+      <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id==fy.id %}selected{% endif %}>
+        {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}{% if fy.is_closed %} [Closed]{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctx-field">
+    <span class="ctx-label">PDF Paper Size</span>
+    <select id="hub-paper-size" class="paper-size-select" onchange="document.querySelectorAll('[data-pdf-link]').forEach(function(a){ var sep=a.dataset.baseHref.indexOf('?')>=0?'&':'?'; a.href=a.dataset.baseHref+sep+'paper_size='+encodeURIComponent(this.value); }.bind(this));">
+      <option value="auto">Auto (A4 / A3)</option>
+      <option value="a4_portrait">A4 Portrait</option>
+      <option value="a4_landscape">A4 Landscape</option>
+      <option value="a3_landscape">A3 Landscape</option>
+      <option value="a3_portrait">A3 Portrait</option>
+    </select>
+  </div>
+</form>
+
+{% set ctx_qs = '' %}
+{% if selected_store and selected_fy %}
+{% set ctx_qs = '?store_id=' ~ selected_store.id ~ '&financial_year_id=' ~ selected_fy.id %}
+{% elif selected_store %}
+{% set ctx_qs = '?store_id=' ~ selected_store.id %}
+{% elif selected_fy %}
+{% set ctx_qs = '?financial_year_id=' ~ selected_fy.id %}
+{% endif %}
+
+<div class="kpi-grid cols-3">
+  <div class="card">
+    <div class="eyebrow">STOCK ACCOUNT</div>
+    <h3>Item Stock Register</h3>
+    <p class="muted small">Opening balance, total inward receipts, outward issues, and closing consumable balances per
+      store and FY.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/registers/item-stock{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/registers/item-stock.pdf{{ ctx_qs }}" href="/app/registers/item-stock.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">ISSUE VOUCHERS</div>
+    <h3>Issue Register</h3>
+    <p class="muted small">Approved indents and store issue documents across Directorate Sections and Branch Offices.
+    </p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/registers/issues{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/registers/issues.pdf{{ ctx_qs }}" href="/app/registers/issues.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">CONSUMPTION SUMMARY</div>
+    <h3>Distribution Register</h3>
+    <p class="muted small">Item-wise distribution to Offices and Sections against manual and online indents.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/registers/distribution{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/registers/distribution.pdf{{ ctx_qs }}" href="/app/registers/distribution.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">AUDIT TRAIL</div>
+    <h3>Transaction Ledger</h3>
+    <p class="muted small">Chronological immutable consumable movements (`StockMovement`) across General Stores.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/registers/transactions{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/registers/transactions.pdf{{ ctx_qs }}" href="/app/registers/transactions.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">IT HARDWARE &amp; ASSETS</div>
+    <h3>Computer &amp; Asset Register</h3>
+    <p class="muted small">Continuous asset register with serial numbers, assigned office/section custodians, and
+      lifecycle state.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/registers/computers{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/registers/computers.pdf{{ ctx_qs }}" href="/app/registers/computers.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">DISPOSAL &amp; WRITE-OFF</div>
+    <h3>E-Waste &amp; Unserviceable Register</h3>
+    <p class="muted small">Assets and unserviceable items condemned or awaiting disposal authorization.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/registers/e-waste{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/registers/e-waste.pdf{{ ctx_qs }}" href="/app/registers/e-waste.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
 </div>
 {% endblock %}

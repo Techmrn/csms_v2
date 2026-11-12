@@ -16,6 +16,7 @@ ROLES = [
     ("ASSISTANT_STOREKEEPER", "Assistant Storekeeper"),
     ("BRANCH_HEAD", "Branch Head"),
     ("BRANCH_STOREKEEPER", "Branch Storekeeper"),
+    ("WAREHOUSEMAN", "Paper Warehouseman"),
     ("SECTION_USER", "Section User"),
 ]
 

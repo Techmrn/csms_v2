@@ -95,6 +95,8 @@ class MasterAdminService:
             raise HTTPException(422, "Central Store must belong to a Directorate office")
         if data["store_type"] == "BRANCH" and office.office_type != "BRANCH":
             raise HTTPException(422, "Branch Store must belong to a Branch office")
+        if data["store_type"] == "PAPER_WAREHOUSE" and office.office_type != "BRANCH":
+            raise HTTPException(422, "Paper Warehouse must belong to a Branch office (Press)")
         if data["store_type"] == "CENTRAL":
             existing = await self.session.scalar(select(Store.id).where(Store.store_type == "CENTRAL", Store.is_active.is_(True)).limit(1))
             if existing is not None:
@@ -117,6 +119,8 @@ class MasterAdminService:
             raise HTTPException(422, "Central Store must belong to a Directorate office")
         if data.get("store_type", store.store_type) == "BRANCH" and office.office_type != "BRANCH":
             raise HTTPException(422, "Branch Store must belong to a Branch office")
+        if data.get("store_type", store.store_type) == "PAPER_WAREHOUSE" and office.office_type != "BRANCH":
+            raise HTTPException(422, "Paper Warehouse must belong to a Branch office (Press)")
         if data.get("store_type", store.store_type) == "CENTRAL" and store.store_type != "CENTRAL":
             existing = await self.session.scalar(select(Store.id).where(Store.store_type == "CENTRAL", Store.id != store.id, Store.is_active.is_(True)).limit(1))
             if existing is not None:
@@ -260,7 +264,7 @@ class MasterAdminService:
     async def list_financial_years(self):
         return list((await self.session.scalars(select(FinancialYear).order_by(FinancialYear.start_date.desc()))).all())
 
-    async def create_financial_year(self, data: dict):
+    async def create_financial_year(self, data: dict, actor_id: int | None = None):
         if data["start_date"] >= data["end_date"]:
             raise HTTPException(422, "Start date must be before end date")
         overlap = await self.session.scalar(
@@ -275,12 +279,19 @@ class MasterAdminService:
         fy = FinancialYear(**data, is_closed=False)
         self.session.add(fy)
         await self.session.flush()
+        if actor_id is not None:
+            from app.services.fy_rollover import FinancialYearRolloverService
+            rollover = FinancialYearRolloverService(self.session)
+            prev = await rollover.previous_fy(fy)
+            if prev and prev.is_closed:
+                await rollover.carry_forward(prev.id, fy.id, actor_id)
         return fy
 
-    async def update_financial_year(self, fy_id: int, data: dict):
+    async def update_financial_year(self, fy_id: int, data: dict, actor_id: int | None = None):
         fy = await self.session.get(FinancialYear, fy_id)
         if fy is None:
             raise HTTPException(404, "Financial year not found")
+        was_closed = bool(fy.is_closed)
         if data.get("year_name") and data["year_name"] != fy.year_name:
             raise HTTPException(422, "Financial year name cannot be changed")
         start = data.get("start_date", fy.start_date)
@@ -293,6 +304,12 @@ class MasterAdminService:
             if key != "year_name":
                 setattr(fy, key, value)
         await self.session.flush()
+        if actor_id is not None and (not was_closed) and bool(fy.is_closed):
+            from app.services.fy_rollover import FinancialYearRolloverService
+            rollover = FinancialYearRolloverService(self.session)
+            nxt = await rollover.next_open_fy(fy)
+            if nxt is not None:
+                await rollover.carry_forward(fy.id, nxt.id, actor_id)
         return fy
 
     async def list_inventory_policies(self):
@@ -409,6 +426,8 @@ class MasterAdminService:
         return list((await self.session.scalars(stmt)).all())
 
     async def get_dashboard_counts(self):
+        from app.paper_store.models.item import PaperItem
+
         models = [Office, Store, Section, Category, Unit, Item, FinancialYear, User, InventoryPolicy]
         result = {}
         for model in models:
@@ -419,6 +438,31 @@ class MasterAdminService:
                     select(func.count()).select_from(model).where(model.is_active.is_(True))
                 )) or 0
             )
+        paper_items = int((await self.session.scalar(select(func.count()).select_from(PaperItem))) or 0)
+        active_paper_items = int(
+            (await self.session.scalar(
+                select(func.count()).select_from(PaperItem).where(PaperItem.is_active.is_(True))
+            )) or 0
+        )
+        paper_warehouses = int(
+            (await self.session.scalar(
+                select(func.count()).select_from(Store).where(Store.store_type == "PAPER_WAREHOUSE")
+            )) or 0
+        )
+        active_paper_warehouses = int(
+            (await self.session.scalar(
+                select(func.count()).select_from(Store).where(
+                    Store.store_type == "PAPER_WAREHOUSE",
+                    Store.is_active.is_(True),
+                )
+            )) or 0
+        )
+        result["paper_items"] = paper_items
+        result["active_paper_items"] = active_paper_items
+        result["paper_warehouses"] = paper_warehouses
+        result["active_paper_warehouses"] = active_paper_warehouses
+        result["general_stores"] = max(0, result["stores"] - paper_warehouses)
+        result["active_general_stores"] = max(0, result["active_stores"] - active_paper_warehouses)
         current_fy = await self.session.scalar(
             select(FinancialYear.year_name).where(FinancialYear.is_current.is_(True)).limit(1)
         )

@@ -1,31 +1,273 @@
 {% extends "base.html" %}
-{% block title %}CSMS V2 — Users{% endblock %}
+{% block title %}CSMS V2 — Users &amp; Access{% endblock %}
 {% block page_title %}User Management{% endblock %}
 {% block content %}
-<div class="notice"><strong>User administration.</strong> Create users, assign existing roles, assign Store access, set Office/Section, activate/deactivate accounts, and reset local passwords. Role/permission definitions themselves are read-only.</div>
-<div class="card"><h2>Create User</h2><form method="post" action="/app/admin/users/new" class="grid cols-3" style="margin-top:14px">
-<label>User Code<input name="code" placeholder="EMP-0001" required></label><label>Username<input name="username" required></label><label>Full Name<input name="full_name" required></label>
-<label>Designation<input name="designation"></label><label>Email<input type="email" name="email"></label><label>Mobile<input name="mobile"></label>
-<label>Office<select id="create_office_id" name="office_id" onchange="filterSections('create')"><option value="">— None —</option>{% for office in offices %}<option value="{{ office.id }}">{{ office.name }}</option>{% endfor %}</select></label>
-<label>Section<select id="create_section_id" name="section_id"><option value="">— None —</option>{% for section in sections %}<option value="{{ section.id }}" data-office-id="{{ section.office_id }}">{{ section.name }}</option>{% endfor %}</select></label>
-<label>Password<input type="password" name="password" minlength="8" required></label>
-<fieldset class="choice-group"><legend>Roles <span class="field-help">Select every role the user should hold. Multiple roles are supported.</span></legend>{% for role in roles %}<label class="choice"><input type="checkbox" name="role_ids" value="{{ role.id }}"> {{ role.name }}</label>{% endfor %}</fieldset>
-<fieldset class="choice-group"><legend>Store Access <span class="field-help">Select every store this user may access.</span></legend>{% for store in stores %}<label class="choice"><input type="checkbox" name="store_ids" value="{{ store.id }}"> {{ store.name }}</label>{% endfor %}</fieldset>
-<label>Remarks<textarea name="remarks" rows="2"></textarea></label><div><a class="button" href="/app/admin/users">Cancel</a><button class="button primary" type="submit">Create User</button></div>
-</form></div>
-{% if edit_user %}<div class="card" style="margin-top:18px"><h2>Edit {{ edit_user.full_name }}</h2><form method="post" action="/app/admin/users/{{ edit_user.id }}/save" class="grid cols-3">
-<label>User Code<input value="{{ edit_user.code }}" disabled></label><label>Username<input value="{{ edit_user.username }}" disabled></label><label>Full Name<input name="full_name" value="{{ edit_user.full_name }}" required></label>
-<label>Designation<input name="designation" value="{{ edit_user.designation or '' }}"></label><label>Email<input name="email" value="{{ edit_user.email or '' }}"></label><label>Mobile<input name="mobile" value="{{ edit_user.mobile or '' }}"></label>
-<label>Office<select id="edit_office_id" name="office_id" onchange="filterSections('edit')"><option value="">— None —</option>{% for office in offices %}<option value="{{ office.id }}" {% if edit_user.office_id==office.id %}selected{% endif %}>{{ office.name }}</option>{% endfor %}</select></label>
-<label>Section<select id="edit_section_id" name="section_id"><option value="">— None —</option>{% for section in sections %}<option value="{{ section.id }}" data-office-id="{{ section.office_id }}" {% if edit_user.section_id==section.id %}selected{% endif %}>{{ section.name }}</option>{% endfor %}</select></label>
-<label>Reset Password<input type="password" name="password" minlength="8" placeholder="Leave blank to keep current"></label>
-<fieldset class="choice-group"><legend>Roles <span class="field-help">Select every role the user should hold.</span></legend>{% for role in roles %}<label class="choice"><input type="checkbox" name="role_ids" value="{{ role.id }}" {% if role in edit_user.roles %}checked{% endif %}> {{ role.name }}</label>{% endfor %}</fieldset>
-<fieldset class="choice-group"><legend>Store Access <span class="field-help">Select every store this user may access.</span></legend>{% for store in stores %}<label class="choice"><input type="checkbox" name="store_ids" value="{{ store.id }}" {% if store in edit_user.stores %}checked{% endif %}> {{ store.name }}</label>{% endfor %}</fieldset>
-<label>Remarks<textarea name="remarks" rows="2">{{ edit_user.remarks or '' }}</textarea></label><label class="check"><input type="checkbox" name="is_active" {% if edit_user.is_active %}checked{% endif %}> Active</label>
-<div><button class="button primary" type="submit">Update User</button><a class="button" href="/app/admin/users">Cancel</a></div>
-</form></div>{% endif %}
-<div class="card table-card" style="margin-top:18px"><table><thead><tr><th>Code</th><th>User</th><th>Role(s)</th><th>Office</th><th>Stores</th><th>Status</th><th></th></tr></thead><tbody>{% for user in users %}<tr><td>{{ user.code }}</td><td><strong>{{ user.full_name }}</strong><div class="muted">{{ user.username }}</div></td><td>{% for role in user.roles %}<span class="badge">{{ role.code }}</span> {% endfor %}</td><td>{{ user.office.name if user.office else '—' }}</td><td>{% for store in user.stores %}<span class="badge">{{ store.code }}</span> {% endfor %}</td><td>{{ 'Active' if user.is_active else 'Inactive' }}</td><td><a class="button" href="/app/admin/users/{{ user.id }}">View</a> <a class="button" href="/app/admin/users?edit={{ user.id }}">Edit</a></td></tr>{% else %}<tr><td colspan="7" class="empty">No users</td></tr>{% endfor %}</tbody></table></div>
+
+<div class="page-header">
+  <div>
+    <div class="page-subtitle">Manage personnel accounts, roles (Storekeepers vs dedicated Paper Warehousemen), and facility assignments.</div>
+  </div>
+  <button type="button" class="button primary" onclick="toggleCreateUserPanel()">+ Create User</button>
+</div>
+
+<div id="createUserPanel" class="card" style="display: none; margin-bottom: 20px; border-top: 3px solid var(--accent);">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <h2 style="margin: 0; font-size: 17px;">Create New User</h2>
+    <button type="button" class="button" style="padding: 4px 10px; font-size: 12px;" onclick="toggleCreateUserPanel()">Close</button>
+  </div>
+  <form method="post" action="/app/admin/users/new" class="grid cols-3">
+    <label>User Code<input name="code" placeholder="EMP-0001" required></label>
+    <label>Username<input name="username" required></label>
+    <label>Full Name<input name="full_name" required></label>
+    <label>Designation<input name="designation" placeholder="e.g. Paper Warehouseman / Storekeeper"></label>
+    <label>Email<input type="email" name="email"></label>
+    <label>Mobile<input name="mobile"></label>
+    <label>Office
+      <select id="create_office_id" name="office_id" onchange="filterSections('create')">
+        <option value="">— None —</option>
+        {% for office in offices %}
+        <option value="{{ office.id }}">{{ office.name }} ({{ office.office_type }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Section
+      <select id="create_section_id" name="section_id">
+        <option value="">— None —</option>
+        {% for section in sections %}
+        <option value="{{ section.id }}" data-office-id="{{ section.office_id }}">{{ section.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Initial Password<input type="password" name="password" minlength="8" required></label>
+
+    <fieldset class="choice-group" style="grid-column: 1 / -1;">
+      <legend>Assigned Role(s) <span class="field-help">Assign <strong>WAREHOUSEMAN</strong> for Paper Warehouse operators, or <strong>BRANCH_STOREKEEPER</strong> for General Storekeepers.</span></legend>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px;">
+        {% for role in roles %}
+        <label class="choice" style="background: #f8fafc; border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+          <input type="checkbox" name="role_ids" value="{{ role.id }}">
+          <span><strong>{{ role.name }}</strong> <code class="small muted">({{ role.code }})</code></span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div style="grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+      <fieldset class="choice-group" style="background: #f8fafc;">
+        <legend style="color: #1e40af;">📦 General Stores Access</legend>
+        <div class="field-help" style="margin-bottom: 6px;">Select ONLY for General Storekeepers (Central / Branch Store):</div>
+        {% for store in stores if store.store_type != 'PAPER_WAREHOUSE' %}
+        <label class="choice">
+          <input type="checkbox" name="store_ids" value="{{ store.id }}">
+          <span>{{ store.name }} <small class="muted">({{ store.office.name }})</small></span>
+        </label>
+        {% else %}
+        <div class="muted small">No general stores configured</div>
+        {% endfor %}
+      </fieldset>
+
+      <fieldset class="choice-group" style="background: #fffdf5; border-color: #fde68a;">
+        <legend style="color: #92400e;">📰 Paper Warehouses Access</legend>
+        <div class="field-help" style="margin-bottom: 6px;">Select ONLY for dedicated Paper Warehousemen:</div>
+        {% for store in stores if store.store_type == 'PAPER_WAREHOUSE' %}
+        <label class="choice">
+          <input type="checkbox" name="store_ids" value="{{ store.id }}">
+          <span>{{ store.name }} <small style="color: #92400e;">({{ store.office.name }})</small></span>
+        </label>
+        {% else %}
+        <div class="muted small">No paper warehouses configured</div>
+        {% endfor %}
+      </fieldset>
+    </div>
+
+    <label style="grid-column: 1 / 3;">Remarks<textarea name="remarks" rows="2" placeholder="Optional notes"></textarea></label>
+    <div style="display: flex; gap: 8px; align-items: flex-end; justify-content: flex-end;">
+      <button type="button" class="button" onclick="toggleCreateUserPanel()">Cancel</button>
+      <button class="button primary" type="submit">Create User</button>
+    </div>
+  </form>
+</div>
+
+{% if edit_user %}
+<div class="card" style="margin-bottom: 20px; border: 2px solid var(--accent);">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <h2 style="margin: 0; font-size: 17px;">Edit User: {{ edit_user.full_name }}</h2>
+    <span class="badge">{{ edit_user.code }}</span>
+  </div>
+  <form method="post" action="/app/admin/users/{{ edit_user.id }}/save" class="grid cols-3">
+    <label>User Code<input value="{{ edit_user.code }}" disabled></label>
+    <label>Username<input value="{{ edit_user.username }}" disabled></label>
+    <label>Full Name<input name="full_name" value="{{ edit_user.full_name }}" required></label>
+    <label>Designation<input name="designation" value="{{ edit_user.designation or '' }}"></label>
+    <label>Email<input name="email" value="{{ edit_user.email or '' }}"></label>
+    <label>Mobile<input name="mobile" value="{{ edit_user.mobile or '' }}"></label>
+    <label>Office
+      <select id="edit_office_id" name="office_id" onchange="filterSections('edit')">
+        <option value="">— None —</option>
+        {% for office in offices %}
+        <option value="{{ office.id }}" {% if edit_user.office_id==office.id %}selected{% endif %}>{{ office.name }} ({{ office.office_type }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Section
+      <select id="edit_section_id" name="section_id">
+        <option value="">— None —</option>
+        {% for section in sections %}
+        <option value="{{ section.id }}" data-office-id="{{ section.office_id }}" {% if edit_user.section_id==section.id %}selected{% endif %}>{{ section.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Reset Password<input type="password" name="password" minlength="8" placeholder="Leave blank to keep current"></label>
+
+    <fieldset class="choice-group" style="grid-column: 1 / -1;">
+      <legend>Assigned Roles</legend>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px;">
+        {% for role in roles %}
+        <label class="choice" style="background: #f8fafc; border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+          <input type="checkbox" name="role_ids" value="{{ role.id }}" {% if role in edit_user.roles %}checked{% endif %}>
+          <span><strong>{{ role.name }}</strong> <code class="small muted">({{ role.code }})</code></span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div style="grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;">
+      <fieldset class="choice-group" style="background: #f8fafc;">
+        <legend style="color: #1e40af;">📦 General Stores Access</legend>
+        {% for store in stores if store.store_type != 'PAPER_WAREHOUSE' %}
+        <label class="choice">
+          <input type="checkbox" name="store_ids" value="{{ store.id }}" {% if store in edit_user.stores %}checked{% endif %}>
+          <span>{{ store.name }} <small class="muted">({{ store.office.name }})</small></span>
+        </label>
+        {% else %}
+        <div class="muted small">No general stores</div>
+        {% endfor %}
+      </fieldset>
+
+      <fieldset class="choice-group" style="background: #fffdf5; border-color: #fde68a;">
+        <legend style="color: #92400e;">📰 Paper Warehouses Access</legend>
+        {% for store in stores if store.store_type == 'PAPER_WAREHOUSE' %}
+        <label class="choice">
+          <input type="checkbox" name="store_ids" value="{{ store.id }}" {% if store in edit_user.stores %}checked{% endif %}>
+          <span>{{ store.name }} <small style="color: #92400e;">({{ store.office.name }})</small></span>
+        </label>
+        {% else %}
+        <div class="muted small">No paper warehouses</div>
+        {% endfor %}
+      </fieldset>
+    </div>
+
+    <label>Remarks<textarea name="remarks" rows="2">{{ edit_user.remarks or '' }}</textarea></label>
+    <label class="choice" style="align-self: center; padding-top: 12px;">
+      <input type="checkbox" name="is_active" {% if edit_user.is_active %}checked{% endif %}> Account Active
+    </label>
+    <div style="display: flex; gap: 8px; align-items: flex-end; justify-content: flex-end;">
+      <a class="button" href="/app/admin/users">Cancel</a>
+      <button class="button primary" type="submit">Update User</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- Filter Toolbar + Directory Table Immediately at Top -->
+<div class="context-bar">
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <button type="button" class="pill-tab user-tab active" onclick="filterUsersByRole('ALL', this)">All ({{ users|length }})</button>
+    <button type="button" class="pill-tab user-tab" onclick="filterUsersByRole('WAREHOUSEMAN', this)">📰 Warehousemen</button>
+    <button type="button" class="pill-tab user-tab" onclick="filterUsersByRole('STOREKEEPER', this)">📦 Storekeepers</button>
+    <button type="button" class="pill-tab user-tab" onclick="filterUsersByRole('BRANCH_HEAD', this)">🏢 Branch Heads</button>
+    <button type="button" class="pill-tab user-tab" onclick="filterUsersByRole('SECTION_USER', this)">Section Users</button>
+  </div>
+  <input id="userSearch" placeholder="Search name, username, office..." style="min-width: 220px;" oninput="applyUserFilters()">
+</div>
+
+<div class="card table-card">
+  <table>
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>User &amp; Designation</th>
+        <th>Role(s)</th>
+        <th>Office &amp; Section</th>
+        <th>Assigned Facilities</th>
+        <th>Status</th>
+        <th style="text-align: right;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      {% set role_codes_str = u.roles|map(attribute='code')|join(',') %}
+      <tr class="user-row" data-roles="{{ role_codes_str }}">
+        <td><code>{{ u.code }}</code></td>
+        <td>
+          <strong>{{ u.full_name }}</strong>
+          <div class="muted small">{{ u.username }}{% if u.designation %} · {{ u.designation }}{% endif %}</div>
+        </td>
+        <td>
+          {% for role in u.roles %}
+          <span class="badge" style="{% if role.code == 'WAREHOUSEMAN' %}background:#fef3c7;color:#92400e;border:1px solid #fde68a;{% endif %}">{{ role.code }}</span>
+          {% endfor %}
+        </td>
+        <td>
+          {% if u.office %}
+            {{ u.office.name }}
+            {% if u.section %}<div class="muted small">↳ {{ u.section.name }}</div>{% endif %}
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>
+          {% for store in u.stores %}
+            {% if store.store_type == 'PAPER_WAREHOUSE' %}
+            <span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a;">📰 {{ store.code }}</span>
+            {% else %}
+            <span class="badge">📦 {{ store.code }}</span>
+            {% endif %}
+          {% else %}
+            <span class="muted small">Office-scoped / All</span>
+          {% endfor %}
+        </td>
+        <td>
+          {% if u.is_active %}<span class="badge" style="background:#dcfce7;color:#15803d;">Active</span>
+          {% else %}<span class="badge" style="background:#fee2e2;color:#b91c1c;">Inactive</span>{% endif %}
+        </td>
+        <td style="text-align: right;">
+          <a class="button" style="padding: 4px 8px; font-size: 12px;" href="/app/admin/users/{{ u.id }}">View</a>
+          <a class="button" style="padding: 4px 8px; font-size: 12px;" href="/app/admin/users?edit={{ u.id }}">Edit</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="empty">No users configured</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
 <script>
+let currentUserRoleFilter = 'ALL';
+function toggleCreateUserPanel() {
+  const panel = document.getElementById('createUserPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+function applyUserFilters() {
+  const q = (document.getElementById('userSearch').value || '').trim().toLowerCase();
+  document.querySelectorAll('.user-row').forEach(row => {
+    const roles = (row.dataset.roles || '').split(',');
+    let roleOk = true;
+    if (currentUserRoleFilter === 'STOREKEEPER') {
+      roleOk = roles.some(r => r.includes('STOREKEEPER'));
+    } else if (currentUserRoleFilter !== 'ALL') {
+      roleOk = roles.includes(currentUserRoleFilter);
+    }
+    const textOk = !q || row.innerText.toLowerCase().includes(q);
+    row.style.display = (roleOk && textOk) ? '' : 'none';
+  });
+}
+function filterUsersByRole(filter, btn) {
+  currentUserRoleFilter = filter;
+  document.querySelectorAll('.user-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  applyUserFilters();
+}
+
 function filterSections(prefix) {
   const officeSelect = document.getElementById(prefix + '_office_id');
   const sectionSelect = document.getElementById(prefix + '_section_id');
@@ -41,9 +283,7 @@ function filterSections(prefix) {
     }
   });
   if (!officeId || !currentValid) {
-    if (sectionSelect.value !== '') {
-      sectionSelect.value = '';
-    }
+    if (sectionSelect.value !== '') sectionSelect.value = '';
   }
 }
 

@@ -84,6 +84,10 @@ class OpeningStock(TimestampMixin, Base):
         ForeignKey("financial_years.id", ondelete="RESTRICT"), nullable=False
     )
     store_id: Mapped[int] = mapped_column(ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False)
+    opening_type: Mapped[str] = mapped_column(String(20), nullable=False, default="INITIAL")
+    source_financial_year_id: Mapped[int | None] = mapped_column(
+        ForeignKey("financial_years.id", ondelete="RESTRICT"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="OPEN")
     remarks: Mapped[str | None] = mapped_column(nullable=True)
     created_by: Mapped[int | None] = mapped_column(

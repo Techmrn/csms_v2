@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Paper Warehouse Stock{% endblock %}
+{% block page_title %}Paper Warehouse Stock{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div class="page-subtitle">Balances calculated strictly per Warehouse and Financial Year (Reams &amp; Sheets for sheet
+    paper; Kilograms for reel paper).</div>
+  <div class="actions">
+    {% if "PAPER_OPENING_CREATE" in permissions %}
+    <a class="button" href="/app/paper/opening-stock/new">Opening Stock</a>
+    {% endif %}
+    {% if "PAPER_RECEIPT_CREATE" in permissions %}
+    <a class="button primary" href="/app/paper/receipts/new">+ Stationery Receipt</a>
+    {% endif %}
+    {% if "PAPER_REGISTER_VIEW" in permissions %}
+    <a class="button" href="/app/paper/registers">Registers</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="context-bar">
+  <form method="get" action="/app/paper/stock" class="context-form">
+    <select name="store_id" onchange="this.form.submit()">
+      {% for store in paper_stores %}
+      <option value="{{ store.id }}" {% if selected_store and selected_store.id==store.id %}selected{% endif %}>
+        📰 {{ store.name }}
+      </option>
+      {% endfor %}
+    </select>
+    <select name="financial_year_id" onchange="this.form.submit()">
+      {% for fy in financial_years %}
+      <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id==fy.id %}selected{% endif %}>
+        {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </form>
+  {% if selected_store and selected_fy %}
+  <span class="muted small">Office: <strong>{{ selected_store.office.name if selected_store.office else 'Press'
+      }}</strong></span>
+  {% endif %}
+</div>
+
+<div class="kpi-grid">
+  <section class="stat-card card" style="border-top: 3px solid #d97706;">
+    <span>Active Paper Specifications</span>
+    <strong>{{ stock_rows|length }}</strong>
+    <small>{{ sheet_specs_count }} Sheet · {{ reel_specs_count }} Reel items</small>
+  </section>
+
+  <section class="stat-card card" style="border-top: 3px solid #15803d;">
+    <span>Sheet Paper Formats</span>
+    <strong style="color: #15803d;">{{ sheet_specs_count }}</strong>
+    <small>Tracked strictly in Reams &amp; Sheets</small>
+  </section>
+
+  <section class="stat-card card" style="border-top: 3px solid #0369a1;">
+    <span>Total Reel Paper Stock</span>
+    <strong style="color: #0369a1;">{{ "%.3f"|format(total_reel_kg) }} kg</strong>
+    <small>{{ (total_reel_kg / 1000)|round(3) }} Metric Tonnes</small>
+  </section>
+</div>
+
+<div class="card table-card">
+  <table>
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>Paper Specification</th>
+        <th>Format</th>
+        <th>FY Opening</th>
+        <th>Receipts / Transfer In</th>
+        <th>Issues / Transfer Out</th>
+        <th class="num">Closing / Available Balance</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in stock_rows %}
+      <tr>
+        <td><code>{{ row.item.code }}</code></td>
+        <td>
+          <strong>{{ row.item.name }}</strong>
+          <div class="muted small">
+            {{ row.item.gsm }} GSM · {{ row.item.paper_type }}
+            {% if row.item.form_type == 'SHEET' %} · {{ row.item.sheets_per_ream or 500 }} sheets/ream{% endif %}
+          </div>
+        </td>
+        <td>
+          {% if row.item.form_type == 'SHEET' %}
+          <span class="badge" style="background:#fef3c7;color:#92400e;">Ream / Sheet</span>
+          {% else %}
+          <span class="badge" style="background:#e0f2fe;color:#0369a1;">Reel (KG)</span>
+          {% endif %}
+        </td>
+        <td>{{ row.formatted_opening }}</td>
+        <td style="color: #15803d;">{{ row.formatted_inward }}</td>
+        <td style="color: #b45309;">{{ row.formatted_outward }}</td>
+        <td class="num">
+          <strong style="font-size: 14px;">{{ row.formatted_balance }}</strong>
+          {% if row.item.form_type == 'SHEET' and row.balance_weight_kg > 0 %}
+          <div class="muted small">~{{ "%.1f"|format(row.balance_weight_kg) }} kg</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7">
+          <div class="empty">
+            No paper stock movements recorded for this Warehouse and Financial Year yet.
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

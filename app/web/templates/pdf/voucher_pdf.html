@@ -1,0 +1,57 @@
+{% extends "base_pdf.html" %}
+{% block content %}
+{% if items %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th class="num" style="width: 24pt;">#</th>
+      {% for col in col_specs %}
+      <th class="{{ 'num' if col.numeric else '' }}">{{ col.label }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in formatted_rows %}
+    <tr>
+      <td class="num">{{ loop.index }}</td>
+      {% for cell in row %}
+      <td class="{{ 'num' if cell.numeric else '' }}">{{ cell.text }}</td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% if totals_row %}
+  <tfoot>
+    <tr>
+      <td></td>
+      {% for cell in totals_row %}
+      <td class="{{ 'num' if cell.numeric else '' }}">{{ cell.text }}</td>
+      {% endfor %}
+    </tr>
+  </tfoot>
+  {% endif %}
+</table>
+{% else %}
+<div class="empty-state">No line items recorded on this voucher.</div>
+{% endif %}
+
+{% if notes %}
+<div class="notes-box">
+  <strong>Remarks / Notes:</strong> {{ notes }}
+</div>
+{% endif %}
+
+{% if signatures %}
+<table class="signature-grid">
+  <tr>
+    {% for sig in signatures %}
+    <td>
+      <div class="sig-role">{{ sig.role }}</div>
+      <div class="sig-line">{{ sig.label }}</div>
+    </td>
+    {% endfor %}
+  </tr>
+</table>
+{% endif %}
+{% endblock %}
+

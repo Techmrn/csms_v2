@@ -80,7 +80,7 @@ class AuthorizationService:
                 raise HTTPException(403, "Only the Deputy Superintendent, Stock & Stores can control the Central Store")
             return user
 
-        if store.store_type == "BRANCH":
+        if store.store_type in ("BRANCH", "PAPER_WAREHOUSE"):
             if "BRANCH_HEAD" not in role_codes or user.office_id != store.office_id:
                 raise HTTPException(403, "Only the Branch Head can control this branch store")
             return user
@@ -193,7 +193,7 @@ class AuthorizationService:
         # Branch head visibility
         if "BRANCH_HEAD" in role_codes and user.office_id is not None:
             branch_stores = await self.session.scalars(
-                select(Store.id).where(Store.office_id == user.office_id, Store.store_type == "BRANCH")
+                select(Store.id).where(Store.office_id == user.office_id, Store.store_type.in_(["BRANCH", "PAPER_WAREHOUSE"]))
             )
             visible_store_ids.update(branch_stores.all())
 
@@ -204,3 +204,73 @@ class AuthorizationService:
         visible_store_ids.update(assigned_stores.all())
 
         return list(visible_store_ids)
+
+    async def get_visible_general_stores(self, user_id: int) -> list[int]:
+        """Return active General Store IDs (excluding PAPER_WAREHOUSE) visible to the user."""
+        visible = await self.get_visible_stores(user_id)
+        stmt = select(Store.id).where(Store.is_active.is_(True), Store.store_type != "PAPER_WAREHOUSE")
+        if visible is not None:
+            if not visible:
+                return []
+            stmt = stmt.where(Store.id.in_(visible))
+        return list((await self.session.scalars(stmt)).all())
+
+    async def get_visible_paper_warehouses(self, user_id: int) -> list[int]:
+        """Return active PAPER_WAREHOUSE IDs visible to the user."""
+        user = await self.session.get(User, user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(403, "User is inactive or not found")
+
+        stmt = (
+            select(Role.code)
+            .join(user_roles, user_roles.c.role_id == Role.id)
+            .where(user_roles.c.user_id == user_id, Role.is_active.is_(True))
+        )
+        role_codes = set((await self.session.scalars(stmt)).all())
+
+        if role_codes.intersection({"SYSTEM_ADMIN", "DIRECTOR", "DEPUTY_SUPDT_STORES"}):
+            all_wh = await self.session.scalars(
+                select(Store.id).where(Store.is_active.is_(True), Store.store_type == "PAPER_WAREHOUSE")
+            )
+            return list(all_wh.all())
+
+        visible_wh_ids: set[int] = set()
+        if ("BRANCH_HEAD" in role_codes or "SECTION_USER" in role_codes) and user.office_id is not None:
+            office_wh = await self.session.scalars(
+                select(Store.id).where(
+                    Store.is_active.is_(True),
+                    Store.store_type == "PAPER_WAREHOUSE",
+                    Store.office_id == user.office_id,
+                )
+            )
+            visible_wh_ids.update(office_wh.all())
+
+        assigned_wh = await self.session.scalars(
+            select(Store.id)
+            .join(user_stores, user_stores.c.store_id == Store.id)
+            .where(
+                user_stores.c.user_id == user_id,
+                Store.is_active.is_(True),
+                Store.store_type == "PAPER_WAREHOUSE",
+            )
+        )
+        visible_wh_ids.update(assigned_wh.all())
+        return list(visible_wh_ids)
+
+    async def require_general_store(self, store_id: int) -> Store:
+        """Ensure the store is an active non-warehouse General Store."""
+        store = await self.session.get(Store, store_id)
+        if store is None or not store.is_active:
+            raise HTTPException(404, "Store not found or inactive")
+        if store.store_type == "PAPER_WAREHOUSE":
+            raise HTTPException(422, "Paper Warehouses cannot process General Store transactions")
+        return store
+
+    async def require_paper_warehouse(self, store_id: int) -> Store:
+        """Ensure the store is an active Paper Warehouse."""
+        store = await self.session.get(Store, store_id)
+        if store is None or not store.is_active:
+            raise HTTPException(404, "Paper Warehouse not found or inactive")
+        if store.store_type != "PAPER_WAREHOUSE":
+            raise HTTPException(422, "Store must be of type PAPER_WAREHOUSE")
+        return store

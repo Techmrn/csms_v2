@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Inter-Press Paper Transfers{% endblock %}
+{% block page_title %}Inter-Press Paper Transfers{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">PAPER WAREHOUSE · INTER-PRESS MOVEMENTS</div>
+    <h1>Inter-Press Paper Transfers</h1>
+    <p class="muted small">Transfer paper between Press Paper Warehouses &harr; Branch Presses (Pull Requests &amp; Directorate Directives).</p>
+  </div>
+  <div class="page-actions">
+    {% if "PAPER_TRANSFER_CREATE" in permissions or "PAPER_TRANSFER_DIRECTIVE" in permissions %}
+    <a class="button primary" href="/app/paper/transfers/new">+ Initiate Paper Transfer</a>
+    {% endif %}
+  </div>
+</div>
+
+<form class="context-bar" method="get" action="/app/paper/transfers">
+  <div class="ctx-field">
+    <span class="ctx-label">Press Warehouse</span>
+    <select name="store_id" onchange="this.form.submit()">
+      {% for st in paper_stores %}
+      <option value="{{ st.id }}" {% if selected_store and selected_store.id == st.id %}selected{% endif %}>
+        {{ st.name }} ({{ st.office.name if st.office else st.code }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctx-field">
+    <span class="ctx-label">Financial Year</span>
+    <select name="financial_year_id" onchange="this.form.submit()">
+      {% for fy in financial_years %}
+      <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>
+        {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}{% if fy.is_closed %} [Closed]{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
+<div class="card table-card">
+  <table>
+    <thead>
+      <tr>
+        <th>Transfer No</th>
+        <th>Date</th>
+        <th>Mode</th>
+        <th>From Warehouse</th>
+        <th>To Warehouse</th>
+        <th>Gate Pass</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tr in transfers %}
+      <tr>
+        <td><strong>{{ tr.transfer_no }}</strong></td>
+        <td>{{ tr.transfer_date }}</td>
+        <td>
+          {% if tr.transfer_mode == 'PUSH' %}
+          <span class="badge info">DIRECTIVE (PUSH)</span>
+          {% else %}
+          <span class="badge">PULL REQUEST</span>
+          {% endif %}
+        </td>
+        <td>{{ tr.source_store.name if tr.source_store else tr.source_store_id }}</td>
+        <td>{{ tr.destination_store.name if tr.destination_store else tr.destination_store_id }}</td>
+        <td class="small">{{ tr.gate_pass_no or '—' }}</td>
+        <td>
+          {% if tr.status == 'RECEIVED' %}
+          <span class="badge ok">RECEIVED</span>
+          {% elif tr.status == 'DISPATCHED' %}
+          <span class="badge warn">IN TRANSIT</span>
+          {% elif tr.status == 'DISCREPANCY' %}
+          <span class="badge danger">DISCREPANCY</span>
+          {% elif tr.status == 'BRANCH_APPROVED' or tr.status == 'DIRECTORATE_DIRECTIVE' %}
+          <span class="badge info">{{ tr.status }}</span>
+          {% else %}
+          <span class="badge">{{ tr.status }}</span>
+          {% endif %}
+        </td>
+        <td><a class="button sm" href="/app/paper/transfers/{{ tr.id }}">Manage / View</a></td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="muted" style="text-align: center; padding: 28px;">
+          No inter-press paper transfers recorded for the selected warehouse and financial year.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

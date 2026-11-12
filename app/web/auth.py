@@ -35,6 +35,8 @@ async def get_user_from_token(session: AsyncSession, token: str) -> User | None:
         .options(
             selectinload(User.roles).selectinload(Role.permissions),
             selectinload(User.stores),
+            selectinload(User.office),
+            selectinload(User.section),
         )
         .where(User.id == user_id, User.is_active.is_(True))
     )

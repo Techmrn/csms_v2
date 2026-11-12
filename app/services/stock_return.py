@@ -62,6 +62,8 @@ class StockReturnService:
             raise HTTPException(404, "Financial year not found")
         if store is None:
             raise HTTPException(404, "Store not found")
+        if store.store_type == "PAPER_WAREHOUSE":
+            raise HTTPException(422, "Paper Warehouses cannot process General Store transactions")
         if fy.is_closed:
             raise HTTPException(409, "Financial year is closed")
         if not (fy.start_date <= payload.return_date <= fy.end_date):

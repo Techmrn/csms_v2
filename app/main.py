@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.db.session import engine
 from app.web.routes import router as web_router
 from app.web.master_routes import router as master_router
+from app.paper_store.web.routes import router as paper_web_router
 
 
 @asynccontextmanager
@@ -101,3 +102,4 @@ async def normalize_duplicate_app_prefix(request, call_next):
 
 app.include_router(web_router)
 app.include_router(master_router)
+app.include_router(paper_web_router)

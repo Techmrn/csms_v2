@@ -1,0 +1,135 @@
+{% extends "base_pdf.html" %}
+{% block extra_css %}
+<style>
+  .party-grid {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 9pt;
+  }
+  .party-grid td {
+    width: 50%;
+    border: 0.75pt solid #cbd5e1;
+    padding: 6pt 8pt;
+    vertical-align: top;
+    background: #ffffff;
+  }
+  .party-heading {
+    font-size: 7.2pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4pt;
+    color: {{ accent_primary or '#1e40af' }};
+    margin-bottom: 3pt;
+  }
+  .party-title {
+    font-size: 9.5pt;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 2pt;
+  }
+  .party-sub {
+    font-size: 8pt;
+    color: #475569;
+  }
+  .ack-box {
+    margin-top: 9pt;
+    border: 0.75pt solid #94a3b8;
+    background: #f8fafc;
+    padding: 6pt 8pt;
+    font-size: 7.8pt;
+    color: #334155;
+    break-inside: avoid;
+  }
+</style>
+{% endblock %}
+{% block content %}
+<table class="party-grid">
+  <tr>
+    <td>
+      <div class="party-heading">Dispatching From</div>
+      <div class="party-title">{{ info.source_store or 'Central Store' }}</div>
+      <div class="party-sub">{{ info.source_office or 'Printing Department' }}</div>
+      <div class="party-sub" style="margin-top: 2pt;">Officer: <strong>{{ info.dispatched_by_name or 'Storekeeper' }}</strong></div>
+    </td>
+    <td>
+      <div class="party-heading">Destination</div>
+      <div class="party-title">{{ info.destination_store or '—' }}</div>
+      <div class="party-sub">{{ info.destination_office or '—' }}</div>
+      <div class="party-sub" style="margin-top: 2pt;">Financial Year: <strong>{{ info.fy_name or '—' }}</strong></div>
+    </td>
+  </tr>
+</table>
+
+<table class="data-table">
+  <thead>
+    <tr>
+      <th class="num" style="width: 22pt;">#</th>
+      <th style="width: 72pt;">Item Code</th>
+      <th>Item Description</th>
+      <th style="width: 48pt;">Unit</th>
+      {% if is_paper %}
+      <th class="num" style="width: 82pt;">Qty / Format</th>
+      <th class="num" style="width: 72pt;">Ledger Units</th>
+      {% else %}
+      <th class="num" style="width: 68pt;">Quantity</th>
+      {% endif %}
+      <th>Remarks / Serial / Asset Refs</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td class="num">{{ loop.index }}</td>
+      <td><strong>{{ item.item_code }}</strong></td>
+      <td>{{ item.item_name }}</td>
+      <td>{{ item.unit_code or '—' }}</td>
+      {% if is_paper %}
+      <td class="num">{{ item.paper_qty_display or item.quantity }}</td>
+      <td class="num">{{ item.quantity }}</td>
+      {% else %}
+      <td class="num"><strong>{{ item.quantity }}</strong></td>
+      {% endif %}
+      <td>
+        {% if item.asset_numbers %}<div><strong>Asset Nos:</strong> {{ item.asset_numbers }}</div>{% endif %}
+        {{ item.remarks or '—' }}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr>
+      <td colspan="4" style="text-align: right;">Total Items: {{ items | length }}</td>
+      {% if is_paper %}
+      <td colspan="2" class="num">{{ total_qty_display or '' }}</td>
+      {% else %}
+      <td class="num">{{ total_qty_display or '' }}</td>
+      {% endif %}
+      <td></td>
+    </tr>
+  </tfoot>
+</table>
+
+<div class="ack-box">
+  <strong>Gate &amp; Carrier Acknowledgement:</strong> Received the above listed items in good order and condition against authorized Gate Pass <strong>{{ info.transfer_no }}</strong>.
+  Vehicle / Mode: <strong>{{ info.vehicle_no or '______________________' }}</strong> ·
+  Carrier / Receiver: <strong>{{ info.received_by_name or '______________________' }}</strong>
+</div>
+
+<table class="signature-grid">
+  <tr>
+    <td>
+      <div class="sig-role">Dispatched By</div>
+      <div class="sig-line">{{ info.dispatched_by_name or 'Storekeeper / Warehouseman' }}</div>
+    </td>
+    <td>
+      <div class="sig-role">Gate / Carrier Verification</div>
+      <div class="sig-line">{{ info.vehicle_no or 'Vehicle &amp; Gate Security' }}</div>
+    </td>
+    <td>
+      <div class="sig-role">Received By (Destination)</div>
+      <div class="sig-line">{{ info.received_by_name or 'Receiving Officer' }}</div>
+    </td>
+  </tr>
+</table>
+{% endblock %}
+

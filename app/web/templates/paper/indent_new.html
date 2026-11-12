@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Issue Paper to Section{% endblock %}
+{% block page_title %}Direct Section Paper Issue{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">PAPER WAREHOUSE · MANUAL SECTION INDENT &amp; ISSUE</div>
+    <h1>Issue Paper to Press Section</h1>
+    <p class="muted small">Atomic entry: saving immediately finalizes the manual indent and deducts Paper Warehouse stock.</p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/app/paper/indents">← Back to Section Indents</a>
+  </div>
+</div>
+
+<form method="post" action="/app/paper/indents/new" class="card form-card stack" id="paper-manual-issue-form">
+  <div class="grid cols-4">
+    <label>
+      Issuing Paper Warehouse *
+      <select name="store_id" onchange="window.location='/app/paper/indents/new?store_id=' + this.value + '&financial_year_id=' + document.querySelector('[name=financial_year_id]').value" required>
+        {% for st in paper_stores %}
+        <option value="{{ st.id }}" {% if selected_store and selected_store.id == st.id %}selected{% endif %}>
+          {{ st.name }} ({{ st.office.name if st.office else st.code }})
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Receiving Press Section *
+      <select name="section_id" required>
+        <option value="">-- Select Section --</option>
+        {% for sec in sections %}
+        <option value="{{ sec.id }}">{{ sec.name }} ({{ sec.code }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Issue Date *
+      <input type="date" name="indent_date" value="{{ today }}" required>
+    </label>
+    <label>
+      Financial Year
+      <select name="financial_year_id" onchange="window.location='/app/paper/indents/new?store_id=' + document.querySelector('[name=store_id]').value + '&financial_year_id=' + this.value">
+        {% for fy in financial_years %}
+        <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>
+          {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <div class="grid cols-2">
+    <label>
+      Work Order / Job No
+      <input name="job_no" placeholder="e.g. JOB/GAZ/2026-088">
+    </label>
+    <label>
+      Issue Remarks
+      <input name="remarks" placeholder="Machine / shift / foreman notes">
+    </label>
+  </div>
+
+  <div class="section-head" style="margin-top: 8px;">
+    <div>
+      <div class="eyebrow">PAPER VARIETIES TO ISSUE</div>
+      <h3>Issue Lines</h3>
+    </div>
+    <button type="button" class="button sm" onclick="addIssueRow()">+ Add Paper Row</button>
+  </div>
+
+  <div class="card table-card" style="overflow-x: auto;">
+    <table>
+      <thead>
+        <tr>
+          <th style="min-width: 240px;">Paper Variety *</th>
+          <th style="min-width: 140px;">Available Stock</th>
+          <th style="min-width: 220px;">Requested Qty *</th>
+          <th style="min-width: 220px;">Actual Issued Qty *</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="issue-rows-body">
+        <tr class="issue-row">
+          <td>
+            <select name="paper_item_id" onchange="syncIssueRow(this)" required>
+              <option value="">-- Select Paper Item --</option>
+              {% for item in paper_items %}
+              <option value="{{ item.id }}"
+                      data-form="{{ item.form_type }}"
+                      data-spr="{{ item.sheets_per_ream or 500 }}"
+                      data-avail="{{ stock_map.get(item.id, '0 (No stock)') }}">
+                {{ item.code }} — {{ item.name }} ({{ item.gsm }} GSM · {{ item.form_type }})
+              </option>
+              {% endfor %}
+            </select>
+          </td>
+          <td>
+            <span class="badge avail-badge">—</span>
+          </td>
+          <td>
+            <div class="sheet-req split-qty">
+              <input type="number" name="requested_reams" min="0" step="1" value="0" onchange="copyReqToIss(this)" aria-label="Requested Reams">
+              <span class="unit-tag">R</span>
+              <input type="number" name="requested_sheets" min="0" step="1" value="0" onchange="copyReqToIss(this)" aria-label="Requested Sheets">
+              <span class="unit-tag">S</span>
+            </div>
+            <div class="reel-req" style="display: none;">
+              <div class="split-qty">
+                <input type="number" name="requested_quantity" min="0" step="0.001" value="" placeholder="0.000" onchange="copyReelReqToIss(this)" aria-label="Requested KG">
+                <span class="unit-tag">KG</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="sheet-iss split-qty">
+              <input type="number" name="issued_reams" min="0" step="1" value="0" aria-label="Issued Reams">
+              <span class="unit-tag">R</span>
+              <input type="number" name="issued_sheets" min="0" step="1" value="0" aria-label="Issued Sheets">
+              <span class="unit-tag">S</span>
+            </div>
+            <div class="reel-iss" style="display: none;">
+              <div class="split-qty">
+                <input type="number" name="issued_quantity" min="0" step="0.001" value="" placeholder="0.000" aria-label="Issued KG">
+                <span class="unit-tag">KG</span>
+              </div>
+            </div>
+            <input type="hidden" name="weight_kg" value="0">
+          </td>
+          <td>
+            <button type="button" class="button sm" onclick="removeIssueRow(this)">Remove</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="form-actions">
+    <a class="button" href="/app/paper/indents">Cancel</a>
+    <button type="submit" class="button primary">Save &amp; Post Paper Issue</button>
+  </div>
+</form>
+
+<script>
+function syncIssueRow(sel) {
+  const row = sel.closest('tr');
+  const opt = sel.options[sel.selectedIndex];
+  const form = opt ? (opt.dataset.form || '') : '';
+  const avail = opt && opt.value ? (opt.dataset.avail || '0') : '—';
+
+  const badge = row.querySelector('.avail-badge');
+  badge.textContent = avail;
+  badge.className = (avail.startsWith('0 ') || avail === '0' || avail === '—') ? 'badge warn avail-badge' : 'badge ok avail-badge';
+
+  const sheetReq = row.querySelector('.sheet-req');
+  const reelReq = row.querySelector('.reel-req');
+  const sheetIss = row.querySelector('.sheet-iss');
+  const reelIss = row.querySelector('.reel-iss');
+
+  if (form === 'REEL') {
+    sheetReq.style.display = 'none';
+    sheetIss.style.display = 'none';
+    reelReq.style.display = 'block';
+    reelIss.style.display = 'block';
+    row.querySelector('input[name="requested_reams"]').value = '0';
+    row.querySelector('input[name="requested_sheets"]').value = '0';
+    row.querySelector('input[name="issued_reams"]').value = '0';
+    row.querySelector('input[name="issued_sheets"]').value = '0';
+  } else {
+    sheetReq.style.display = 'flex';
+    sheetIss.style.display = 'flex';
+    reelReq.style.display = 'none';
+    reelIss.style.display = 'none';
+    row.querySelector('input[name="requested_quantity"]').value = '';
+    row.querySelector('input[name="issued_quantity"]').value = '';
+  }
+}
+
+function copyReqToIss(inp) {
+  const row = inp.closest('tr');
+  const rr = row.querySelector('input[name="requested_reams"]');
+  const rs = row.querySelector('input[name="requested_sheets"]');
+  const ir = row.querySelector('input[name="issued_reams"]');
+  const is = row.querySelector('input[name="issued_sheets"]');
+  if (ir.value === '0' && is.value === '0') {
+    ir.value = rr.value || '0';
+    is.value = rs.value || '0';
+  }
+}
+
+function copyReelReqToIss(inp) {
+  const row = inp.closest('tr');
+  const iq = row.querySelector('input[name="issued_quantity"]');
+  if (!iq.value) {
+    iq.value = inp.value;
+  }
+}
+
+function addIssueRow() {
+  const tbody = document.getElementById('issue-rows-body');
+  const clone = tbody.querySelector('tr.issue-row').cloneNode(true);
+  clone.querySelector('select[name="paper_item_id"]').selectedIndex = 0;
+  clone.querySelector('input[name="requested_reams"]').value = '0';
+  clone.querySelector('input[name="requested_sheets"]').value = '0';
+  clone.querySelector('input[name="issued_reams"]').value = '0';
+  clone.querySelector('input[name="issued_sheets"]').value = '0';
+  clone.querySelector('input[name="requested_quantity"]').value = '';
+  clone.querySelector('input[name="issued_quantity"]').value = '';
+  clone.querySelector('input[name="weight_kg"]').value = '0';
+  syncIssueRow(clone.querySelector('select[name="paper_item_id"]'));
+  tbody.appendChild(clone);
+}
+
+function removeIssueRow(btn) {
+  const tbody = document.getElementById('issue-rows-body');
+  if (tbody.querySelectorAll('tr.issue-row').length > 1) {
+    btn.closest('tr').remove();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#issue-rows-body select[name="paper_item_id"]').forEach(syncIssueRow);
+});
+</script>
+{% endblock %}

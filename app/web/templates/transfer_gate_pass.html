@@ -200,6 +200,7 @@
   .context-bar,
   .button,
   .nav,
+  .print-only-masthead,
   header,
   footer {
     display: none !important;
@@ -298,10 +299,11 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px; vertical-align:-2px;"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
       Print Gate Pass (A4)
     </button>
-    <a class="button" href="/app/transfers/{{ transfer.id }}/gate-pass.pdf" id="btnDownloadGatePassPdf">
+    <a class="button" href="/app/transfers/{{ transfer.id }}/gate-pass.pdf?paper_size=a4_portrait" id="btnDownloadGatePassPdf">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:5px; vertical-align:-2px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-      Download PDF
+      Download PDF (A4)
     </a>
+    <a class="button" href="/app/transfers/{{ transfer.id }}/gate-pass.pdf?paper_size=a3_landscape">A3 PDF</a>
     <a class="button" href="/app/requisitions/{{ requisition.id }}">Back to Requisition</a>
     <a class="button" href="/app/transfers">All Transfers</a>
   </div>
@@ -340,7 +342,7 @@
 <!-- Printable A4 Sheet -->
 <div class="gp-sheet" id="printableGatePass">
   <div class="gp-header">
-    <div class="gp-dept">Directorate of Printing &amp; Stationery</div>
+    <div class="gp-dept">Printing Department</div>
     <div class="gp-title">Outward Gate Pass / Dispatch Voucher</div>
     <div class="gp-sub">Inter-Store Stock Transfer &bull; Central Store to Branch Office</div>
   </div>

@@ -19,6 +19,8 @@ DEV_USERS = [
     ("DEV-ASK", "dev_assistant_sk", "Assistant Storekeeper (DEV)", "ASSISTANT_STOREKEEPER", "DIR", "CENTRAL", None),
     ("DEV-PBH", "dev_press_head", "Central Press Branch Head (DEV)", "BRANCH_HEAD", "PRESS", "PRESS-STORE", None),
     ("DEV-PBSK", "dev_press_sk", "Central Press Storekeeper (DEV)", "BRANCH_STOREKEEPER", "PRESS", "PRESS-STORE", None),
+    ("DEV-CP-WHM", "dev_cp_whman", "Central Press Warehouseman (DEV)", "WAREHOUSEMAN", "PRESS", "PRESS-PAPER-WH", None),
+    ("DEV-BP-WHM", "dev_bp_whman", "Branch Press Warehouseman (DEV)", "WAREHOUSEMAN", "PRESS2", "BP-PAPER-WH", None),
 ]
 
 

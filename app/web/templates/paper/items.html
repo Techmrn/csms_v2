@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Paper Catalog{% endblock %}
+{% block page_title %}Paper Items Catalog{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <div class="page-subtitle">Master paper specifications (Maplitho, Creamwove, Art Paper, Kraft) separate from General Store consumables.</div>
+  </div>
+  <button type="button" class="button primary" onclick="toggleCreatePaperItem()">+ Add Paper Item</button>
+</div>
+
+<div id="createPaperItemPanel" class="card" style="display: none; margin-bottom: 20px; border-top: 3px solid #d97706;">
+  <h2 style="margin: 0 0 12px; font-size: 17px;">Add Paper Specification</h2>
+  <form method="post" action="/app/admin/paper-items/new" class="grid cols-3">
+    <label>Paper Code<input name="code" placeholder="e.g. PPR-MAP-70-RA1" required></label>
+    <label>Paper Name<input name="name" placeholder="e.g. White Maplitho 70 GSM" required></label>
+    <label>Paper Type<input name="paper_type" placeholder="Maplitho / Creamwove / Art" required></label>
+    <label>Form Type
+      <select name="form_type" required>
+        <option value="SHEET">SHEET (Reams + Sheets)</option>
+        <option value="REEL">REEL (Kilograms)</option>
+      </select>
+    </label>
+    <label>GSM<input type="number" name="gsm" min="10" required></label>
+    <label>Sheets per Ream<input type="number" name="sheets_per_ream" value="500" min="1" required></label>
+    <label>Base Unit
+      <select name="unit_id" required>
+        {% for u in units %}<option value="{{ u.id }}">{{ u.code }} ({{ u.name }})</option>{% endfor %}
+      </select>
+    </label>
+    <label>Sheet Size (L x W cm)
+      <div class="split-qty">
+        <input type="number" step="0.01" name="length_cm" placeholder="Length">
+        <input type="number" step="0.01" name="width_cm" placeholder="Width">
+      </div>
+    </label>
+    <label>Reel Width (cm) / Wt per Ream (kg)
+      <div class="split-qty">
+        <input type="number" step="0.01" name="reel_width_cm" placeholder="Reel W">
+        <input type="number" step="0.001" name="weight_per_ream_kg" placeholder="Kg/Ream">
+      </div>
+    </label>
+    <label style="grid-column: 1 / 3;">Remarks<input name="remarks"></label>
+    <div style="display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
+      <button type="button" class="button" onclick="toggleCreatePaperItem()">Cancel</button>
+      <button class="button primary" type="submit">Save Paper Item</button>
+    </div>
+  </form>
+</div>
+
+{% if edit_item %}
+<div class="card" style="margin-bottom: 20px; border: 2px solid #d97706;">
+  <h2 style="margin: 0 0 12px; font-size: 17px;">Edit {{ edit_item.name }}</h2>
+  <form method="post" action="/app/admin/paper-items/{{ edit_item.id }}/save" class="grid cols-3">
+    <label>Code<input value="{{ edit_item.code }}" disabled></label>
+    <label>Paper Name<input name="name" value="{{ edit_item.name }}" required></label>
+    <label>Paper Type<input name="paper_type" value="{{ edit_item.paper_type }}" required></label>
+    <label>Form Type
+      <select name="form_type" required>
+        <option value="SHEET" {% if edit_item.form_type == 'SHEET' %}selected{% endif %}>SHEET (Reams + Sheets)</option>
+        <option value="REEL" {% if edit_item.form_type == 'REEL' %}selected{% endif %}>REEL (Kilograms)</option>
+      </select>
+    </label>
+    <label>GSM<input type="number" name="gsm" value="{{ edit_item.gsm }}" min="10" required></label>
+    <label>Sheets per Ream<input type="number" name="sheets_per_ream" value="{{ edit_item.sheets_per_ream or 500 }}" min="1" required></label>
+    <label>Base Unit
+      <select name="unit_id" required>
+        {% for u in units %}<option value="{{ u.id }}" {% if u.id == edit_item.unit_id %}selected{% endif %}>{{ u.code }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Sheet Size (L x W cm)
+      <div class="split-qty">
+        <input type="number" step="0.01" name="length_cm" value="{{ edit_item.length_cm or '' }}" placeholder="Length">
+        <input type="number" step="0.01" name="width_cm" value="{{ edit_item.width_cm or '' }}" placeholder="Width">
+      </div>
+    </label>
+    <label>Reel Width (cm) / Wt per Ream (kg)
+      <div class="split-qty">
+        <input type="number" step="0.01" name="reel_width_cm" value="{{ edit_item.reel_width_cm or '' }}" placeholder="Reel W">
+        <input type="number" step="0.001" name="weight_per_ream_kg" value="{{ edit_item.weight_per_ream_kg or '' }}" placeholder="Kg/Ream">
+      </div>
+    </label>
+    <label>Remarks<input name="remarks" value="{{ edit_item.remarks or '' }}"></label>
+    <label class="choice" style="padding-top: 18px;"><input type="checkbox" name="is_active" {% if edit_item.is_active %}checked{% endif %}> Active</label>
+    <div style="display: flex; justify-content: flex-end; align-items: flex-end; gap: 8px;">
+      <a class="button" href="/app/admin/paper-items">Cancel</a>
+      <button class="button primary" type="submit">Update Item</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<div class="card table-card">
+  <table>
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>Specification</th>
+        <th>Type</th>
+        <th>Format</th>
+        <th>GSM / Dimensions</th>
+        <th>Sheets / Ream</th>
+        <th>Status</th>
+        <th style="text-align: right;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in paper_items %}
+      <tr>
+        <td><code>{{ item.code }}</code></td>
+        <td><strong>{{ item.name }}</strong></td>
+        <td>{{ item.paper_type }}</td>
+        <td>
+          {% if item.form_type == 'SHEET' %}
+          <span class="badge" style="background:#fef3c7;color:#92400e;">Ream / Sheet</span>
+          {% else %}
+          <span class="badge" style="background:#e0f2fe;color:#0369a1;">Reel (KG)</span>
+          {% endif %}
+        </td>
+        <td>
+          {{ item.gsm }} GSM
+          {% if item.length_cm and item.width_cm %}
+          <span class="muted small">· {{ item.length_cm }}×{{ item.width_cm }} cm</span>
+          {% elif item.reel_width_cm %}
+          <span class="muted small">· {{ item.reel_width_cm }} cm reel</span>
+          {% endif %}
+        </td>
+        <td>{{ item.sheets_per_ream if item.form_type == 'SHEET' else '—' }}</td>
+        <td>{{ 'Active' if item.is_active else 'Inactive' }}</td>
+        <td style="text-align: right;">
+          <a class="button" style="padding: 4px 10px; font-size: 12px;" href="/app/admin/paper-items?edit={{ item.id }}">Edit</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">No paper items defined yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+function toggleCreatePaperItem() {
+  const el = document.getElementById('createPaperItemPanel');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endblock %}
+

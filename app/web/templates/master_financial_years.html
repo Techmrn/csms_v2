@@ -1,8 +1,112 @@
 {% extends "base.html" %}
 {% block title %}CSMS V2 — Financial Years{% endblock %}
-{% block page_title %}Financial Years{% endblock %}
+{% block page_title %}Financial Years &amp; Rollover{% endblock %}
 {% block content %}
-<div class="card"><h2>Add Financial Year</h2><form method="post" action="/app/admin/financial-years/new" class="grid cols-4" style="margin-top:14px"><label>Year Name<input name="year_name" placeholder="2027-28" required></label><label>Start Date<input type="date" name="start_date" required></label><label>End Date<input type="date" name="end_date" required></label><label class="check"><input type="checkbox" name="is_current"> Current FY</label><div><a class="button" href="/app/admin/financial-years">Cancel</a><button class="button primary">Save Financial Year</button></div></form></div>
-{% if edit_year %}<div class="card" style="margin-top:18px"><h2>Edit {{ edit_year.year_name }}</h2><form method="post" action="/app/admin/financial-years/{{ edit_year.id }}/save" class="grid cols-4"><label>Year Name<input value="{{ edit_year.year_name }}" disabled></label><label>Start Date<input type="date" name="start_date" value="{{ edit_year.start_date }}" required></label><label>End Date<input type="date" name="end_date" value="{{ edit_year.end_date }}" required></label><label class="check"><input type="checkbox" name="is_current" {% if edit_year.is_current %}checked{% endif %}> Current</label><label class="check"><input type="checkbox" name="is_closed" {% if edit_year.is_closed %}checked{% endif %}> Closed</label><div><button class="button primary">Update Financial Year</button><a class="button" href="/app/admin/financial-years">Cancel</a></div></form></div>{% endif %}
-<div class="card table-card" style="margin-top:18px"><table><thead><tr><th>Year</th><th>Start</th><th>End</th><th>Current</th><th>Closed</th><th></th></tr></thead><tbody>{% for year in years %}<tr><td>{{ year.year_name }}</td><td>{{ year.start_date }}</td><td>{{ year.end_date }}</td><td>{{ 'Yes' if year.is_current else 'No' }}</td><td>{{ 'Yes' if year.is_closed else 'No' }}</td><td><a class="button" href="/app/admin/financial-years?edit={{ year.id }}">Edit</a></td></tr>{% else %}<tr><td colspan="6" class="empty">No financial years</td></tr>{% endfor %}</tbody></table></div>
+
+<div class="page-header">
+  <div>
+    <div class="page-subtitle">Non-overlapping accounting years. Closing an FY automatically carries forward positive balances for both Stores and Paper Warehouses into the next open FY.</div>
+  </div>
+  <button type="button" class="button primary" onclick="toggleAddFy()">+ Add Financial Year</button>
+</div>
+
+<div id="addFyPanel" class="card" style="display: none; margin-bottom: 20px; border-top: 3px solid var(--accent);">
+  <h2 style="margin: 0 0 12px; font-size: 17px;">Add Financial Year</h2>
+  <form method="post" action="/app/admin/financial-years/new" class="grid cols-4">
+    <label>Year Name<input name="year_name" placeholder="2027-28" required></label>
+    <label>Start Date<input type="date" name="start_date" required></label>
+    <label>End Date<input type="date" name="end_date" required></label>
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 10px;">
+      <label class="choice"><input type="checkbox" name="is_current"> Current</label>
+      <button class="button primary">Save FY</button>
+    </div>
+  </form>
+</div>
+
+{% if edit_year %}
+<div class="card" style="margin-bottom: 20px; border: 2px solid var(--accent);">
+  <h2 style="margin: 0 0 12px; font-size: 17px;">Edit {{ edit_year.year_name }}</h2>
+  <form method="post" action="/app/admin/financial-years/{{ edit_year.id }}/save" class="grid cols-4">
+    <label>Year Name<input value="{{ edit_year.year_name }}" disabled></label>
+    <label>Start Date<input type="date" name="start_date" value="{{ edit_year.start_date }}" required></label>
+    <label>End Date<input type="date" name="end_date" value="{{ edit_year.end_date }}" required></label>
+    <div style="display: flex; gap: 14px; align-items: flex-end; padding-bottom: 8px;">
+      <label class="choice"><input type="checkbox" name="is_current" {% if edit_year.is_current %}checked{% endif %}> Current</label>
+      <label class="choice"><input type="checkbox" name="is_closed" {% if edit_year.is_closed %}checked{% endif %}> Closed</label>
+    </div>
+    <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px;">
+      <a class="button" href="/app/admin/financial-years">Cancel</a>
+      <button class="button primary">Update Financial Year</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- Financial Years List -->
+<div class="card table-card" style="margin-bottom: 22px;">
+  <table>
+    <thead>
+      <tr>
+        <th>Financial Year</th>
+        <th>Start Date</th>
+        <th>End Date</th>
+        <th>Active Status</th>
+        <th>Ledger Lock</th>
+        <th style="text-align: right;">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for year in years %}
+      <tr>
+        <td><strong>{{ year.year_name }}</strong></td>
+        <td>{{ year.start_date }}</td>
+        <td>{{ year.end_date }}</td>
+        <td>{% if year.is_current %}<span class="badge" style="background:#eff6ff;color:#1e40af;">Current FY</span>{% else %}<span class="muted">Past / Upcoming</span>{% endif %}</td>
+        <td>{% if year.is_closed %}<span class="badge" style="background:#fee2e2;color:#b91c1c;">Closed</span>{% else %}<span class="badge" style="background:#dcfce7;color:#15803d;">Open</span>{% endif %}</td>
+        <td style="text-align: right;"><a class="button" style="padding: 4px 10px; font-size: 12px;" href="/app/admin/financial-years?edit={{ year.id }}">Edit</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty">No financial years configured</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Explicit Carry-Forward Rollover Tool -->
+{% if years|length >= 2 %}
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+    <div>
+      <h3 style="margin: 0; font-size: 16px;">Closing Balance Carry-Forward (Store &amp; Warehouse)</h3>
+      <div class="muted small">Idempotently copies non-zero consumable balances (General Stores) and paper balances (Reams+Sheets &amp; KG in Paper Warehouses) into the next open Financial Year.</div>
+    </div>
+  </div>
+  <form method="post" action="/app/admin/financial-years/carry-forward" class="grid cols-3" style="margin-top: 12px;">
+    <label>Source Financial Year (From)
+      <select name="source_fy_id" required>
+        {% for y in years %}
+        <option value="{{ y.id }}">{{ y.year_name }} ({{ 'Closed' if y.is_closed else 'Open' }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Target Financial Year (Into)
+      <select name="target_fy_id" required>
+        {% for y in years if not y.is_closed %}
+        <option value="{{ y.id }}">{{ y.year_name }}{% if y.is_current %} — Current{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div style="display: flex; align-items: flex-end;">
+      <button class="button primary" type="submit" style="width: 100%;">Run Carry-Forward Rollover</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<script>
+function toggleAddFy() {
+  const el = document.getElementById('addFyPanel');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
 {% endblock %}

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Paper Receipts (Stationery Dept){% endblock %}
+{% block page_title %}Paper Receipts{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">PAPER WAREHOUSE · STATIONERY DEPARTMENT RECEIPTS</div>
+    <h1>Stationery Paper Receipts</h1>
+    <p class="muted small">Stationery allotment &amp; delivery receipts posted directly to Press Paper Warehouse stock.</p>
+  </div>
+  <div class="page-actions">
+    {% if "PAPER_RECEIPT_CREATE" in permissions %}
+    <a class="button primary" href="/app/paper/receipts/new{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}">+ Receive Paper from Stationery</a>
+    {% endif %}
+  </div>
+</div>
+
+<form class="context-bar" method="get" action="/app/paper/receipts">
+  <div class="ctx-field">
+    <span class="ctx-label">Press Warehouse</span>
+    <select name="store_id" onchange="this.form.submit()">
+      {% for st in paper_stores %}
+      <option value="{{ st.id }}" {% if selected_store and selected_store.id == st.id %}selected{% endif %}>
+        {{ st.name }} ({{ st.office.name if st.office else st.code }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctx-field">
+    <span class="ctx-label">Financial Year</span>
+    <select name="financial_year_id" onchange="this.form.submit()">
+      {% for fy in financial_years %}
+      <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>
+        {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}{% if fy.is_closed %} [Closed]{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
+<div class="card table-card">
+  <table>
+    <thead>
+      <tr>
+        <th>Receipt No</th>
+        <th>Date</th>
+        <th>Source Depot</th>
+        <th>Challan / Allotment</th>
+        <th>Warehouse</th>
+        <th class="num">Varieties</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in receipts %}
+      <tr>
+        <td><strong>{{ r.receipt_no }}</strong></td>
+        <td>{{ r.receipt_date }}</td>
+        <td>{{ r.source_depot }}</td>
+        <td class="small">
+          {{ r.challan_no or '—' }}
+          {% if r.allotment_no %}<div class="muted">Allot: {{ r.allotment_no }}</div>{% endif %}
+        </td>
+        <td>{{ r.store.name if r.store else r.store_id }}</td>
+        <td class="num">{{ r.lines|length }}</td>
+        <td><span class="badge ok">{{ r.status }}</span></td>
+        <td><a class="button sm" href="/app/paper/receipts/{{ r.id }}">View Voucher</a></td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="muted" style="text-align: center; padding: 28px;">
+          No Stationery Department receipts recorded for this warehouse and financial year.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

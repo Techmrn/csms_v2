@@ -10,7 +10,15 @@
     <input name="search" value="{{ search }}" placeholder="Search register" aria-label="Search register">
     <select name="page_size"><option value="25" {% if page_size==25 %}selected{% endif %}>25</option><option value="50" {% if page_size==50 %}selected{% endif %}>50</option><option value="100" {% if page_size==100 %}selected{% endif %}>100</option></select>
     <button class="button" type="submit">Apply</button>
-    <a class="button" href="{{ request.url.path }}.pdf?{% if selected_store %}store_id={{ selected_store.id }}&{% endif %}{% if selected_fy %}financial_year_id={{ selected_fy.id }}&{% endif %}search={{ search|urlencode }}">Download PDF</a>
+    {% set pdf_base = request.url.path ~ '.pdf?' ~ (('store_id=' ~ selected_store.id ~ '&') if selected_store else '') ~ (('financial_year_id=' ~ selected_fy.id ~ '&') if selected_fy else '') ~ 'search=' ~ (search|urlencode) %}
+    <select id="pdf-paper-size" class="paper-size-select" aria-label="PDF Paper Size" onchange="var b=document.getElementById('download-pdf-btn'); b.href=b.dataset.basePdf+'&paper_size='+encodeURIComponent(this.value);">
+      <option value="auto">PDF: Auto (A4 / A3)</option>
+      <option value="a4_portrait">A4 Portrait</option>
+      <option value="a4_landscape">A4 Landscape</option>
+      <option value="a3_landscape">A3 Landscape</option>
+      <option value="a3_portrait">A3 Portrait</option>
+    </select>
+    <a id="download-pdf-btn" class="button primary" data-base-pdf="{{ pdf_base }}" href="{{ pdf_base }}&paper_size=auto">Download PDF</a>
   </form>
 </div>
 <div class="card table-card">

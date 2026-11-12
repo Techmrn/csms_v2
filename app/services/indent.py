@@ -63,6 +63,8 @@ class IndentService:
             raise HTTPException(404, "Financial year not found")
         if store is None:
             raise HTTPException(404, "Store not found")
+        if store.store_type == "PAPER_WAREHOUSE":
+            raise HTTPException(422, "Paper Warehouses cannot process General Store transactions")
         if office is None:
             raise HTTPException(404, "Office not found")
         if fy.is_closed:

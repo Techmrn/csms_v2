@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Paper Opening {{ opening.opening_no }}{% endblock %}
+{% block page_title %}Paper Opening Stock Voucher{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">PAPER WAREHOUSE OPENING VOUCHER</div>
+    <h1>{{ opening.opening_no }}</h1>
+    <p class="muted small">
+      Warehouse: <strong>{{ opening.store.name if opening.store else opening.store_id }}</strong> ·
+      Financial Year: <strong>{{ opening.financial_year.year_name if opening.financial_year else '' }}</strong> ·
+      Type: <strong>{{ opening.opening_type }}</strong>
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/app/paper/opening-stock?store_id={{ opening.store_id }}&financial_year_id={{ opening.financial_year_id }}">← Back to Opening Stock</a>
+    <a class="button primary" href="/app/paper/opening-stock/{{ opening.id }}.pdf?paper_size=a4_portrait">Download PDF (A4)</a>
+    <a class="button" href="/app/paper/opening-stock/{{ opening.id }}.pdf?paper_size=a3_landscape">A3 PDF</a>
+    <button class="button" type="button" onclick="window.print()">Print Voucher</button>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 16px;">
+  <div class="grid cols-4">
+    <div>
+      <div class="muted small">Opening No</div>
+      <strong>{{ opening.opening_no }}</strong>
+    </div>
+    <div>
+      <div class="muted small">Opening Date</div>
+      <strong>{{ opening.opening_date }}</strong>
+    </div>
+    <div>
+      <div class="muted small">Entry Mode</div>
+      <span class="badge {% if opening.opening_type == 'CARRY_FORWARD' %}info{% else %}ok{% endif %}">{{ opening.opening_type }}</span>
+    </div>
+    <div>
+      <div class="muted small">Ledger Status</div>
+      <span class="badge ok">{{ opening.status }}</span>
+    </div>
+  </div>
+  {% if opening.source_financial_year %}
+  <div class="muted small" style="margin-top: 10px;">
+    Carried forward automatically from closed Financial Year: <strong>{{ opening.source_financial_year.year_name }}</strong>
+  </div>
+  {% endif %}
+  {% if opening.remarks %}
+  <div style="margin-top: 10px;"><strong>Remarks:</strong> {{ opening.remarks }}</div>
+  {% endif %}
+</div>
+
+<div class="card table-card">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Code</th>
+        <th>Paper Description</th>
+        <th>Form</th>
+        <th class="num">Opening Balance</th>
+        <th class="num">Reels</th>
+        <th>Remarks</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in opening.lines %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><code>{{ line.paper_item.code if line.paper_item else '' }}</code></td>
+        <td>
+          <strong>{{ line.paper_item.name if line.paper_item else line.paper_item_id }}</strong>
+          {% if line.paper_item %}<div class="muted small">{{ line.paper_item.gsm }} GSM · {{ line.paper_item.paper_type }}</div>{% endif %}
+        </td>
+        <td><span class="badge">{{ line.paper_item.form_type if line.paper_item else '' }}</span></td>
+        <td class="num"><strong>{{ format_paper(line.paper_item.form_type if line.paper_item else 'SHEET', line.total_sheets, line.weight_kg, line.paper_item.sheets_per_ream if line.paper_item else 500) }}</strong></td>
+        <td class="num">{{ line.reel_count if line.reel_count is not none else '—' }}</td>
+        <td class="muted small">{{ line.remarks or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+

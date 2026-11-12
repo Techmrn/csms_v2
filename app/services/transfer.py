@@ -47,9 +47,13 @@ class TransferService:
         source_store = await self.session.get(Store, payload.source_store_id)
         if not source_store or not source_store.is_active:
             raise HTTPException(404, "Source store not found or inactive")
+        if source_store.store_type == "PAPER_WAREHOUSE":
+            raise HTTPException(422, "Paper Warehouses cannot use General Store transfers")
         dest_store = await self.session.get(Store, payload.destination_store_id)
         if not dest_store or not dest_store.is_active:
             raise HTTPException(404, "Destination store not found or inactive")
+        if dest_store.store_type == "PAPER_WAREHOUSE":
+            raise HTTPException(422, "Paper Warehouses cannot use General Store transfers")
 
         transfer_date = payload.transfer_date or date.today()
         fy = await self._financial_year_for_date(transfer_date)

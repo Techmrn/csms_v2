@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Receive Paper from Stationery Dept{% endblock %}
+{% block page_title %}Receive Paper from Stationery Dept{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">PAPER WAREHOUSE · INWARD STATIONERY CHALLAN</div>
+    <h1>Receive Paper Stock</h1>
+    <p class="muted small">Enter Reams + Sheets for Sheet varieties and Weight (KG) + Reel count for Reels.</p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/app/paper/receipts">← Back to Receipts</a>
+  </div>
+</div>
+
+<form method="post" action="/app/paper/receipts/new" class="card form-card stack" id="paper-receipt-form">
+  <div class="grid cols-3">
+    <label>
+      Receiving Paper Warehouse *
+      <select name="store_id" required>
+        {% for st in paper_stores %}
+        <option value="{{ st.id }}" {% if selected_store and selected_store.id == st.id %}selected{% endif %}>
+          {{ st.name }} ({{ st.office.name if st.office else st.code }})
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Receipt Date *
+      <input type="date" name="receipt_date" value="{{ today }}" required>
+    </label>
+    <label>
+      Financial Year
+      <select name="financial_year_id">
+        {% for fy in financial_years %}
+        <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>
+          {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <div class="grid cols-3">
+    <label>
+      Source Stationery Department *
+      <input name="source_depot" value="Stationery Department, Thiruvananthapuram" required>
+    </label>
+    <label>
+      Allotment / Sanction No
+      <input name="allotment_no" placeholder="e.g. STAT/ALLOT/2026/041">
+    </label>
+    <label>
+      Allotment Date
+      <input type="date" name="allotment_date">
+    </label>
+  </div>
+
+  <div class="grid cols-4">
+    <label>
+      Challan / Waybill No
+      <input name="challan_no" placeholder="Challan number">
+    </label>
+    <label>
+      Challan Date
+      <input type="date" name="challan_date">
+    </label>
+    <label>
+      Vehicle / Lorry No
+      <input name="vehicle_no" placeholder="e.g. KL-01-XX-1234">
+    </label>
+    <label>
+      Carrier / LR No
+      <input name="carrier_name" placeholder="Transport / Carrier name">
+      <input type="hidden" name="lorry_receipt_no" value="">
+    </label>
+  </div>
+
+  <label>
+    Inspection &amp; Receipt Remarks
+    <input name="remarks" placeholder="Condition on arrival / weighbridge note / bundle verification">
+  </label>
+
+  <div class="section-head" style="margin-top: 10px;">
+    <div>
+      <div class="eyebrow">RECEIVED PAPER VARIETIES</div>
+      <h3>Paper Receipt Lines</h3>
+    </div>
+    <button type="button" class="button sm" onclick="addReceiptRow()">+ Add Paper Row</button>
+  </div>
+
+  <div id="receipt-lines" class="stack">
+    <div class="card receipt-row" style="border: 1px solid var(--border); padding: 14px;">
+      <div class="grid cols-3" style="align-items: end; margin-bottom: 10px;">
+        <label style="grid-column: span 2;">
+          Paper Variety *
+          <select name="paper_item_id" onchange="syncReceiptRow(this)" required>
+            <option value="">-- Select Paper Item --</option>
+            {% for item in paper_items %}
+            <option value="{{ item.id }}"
+                    data-unit="{{ item.unit_id }}"
+                    data-form="{{ item.form_type }}"
+                    data-spr="{{ item.sheets_per_ream or 500 }}">
+              {{ item.code }} — {{ item.name }} ({{ item.gsm }} GSM · {{ item.form_type }})
+            </option>
+            {% endfor %}
+          </select>
+          <input type="hidden" name="unit_id" value="">
+        </label>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <span class="badge form-badge">Select item</span>
+          <button type="button" class="button sm" onclick="removeReceiptRow(this)">Remove Row</button>
+        </div>
+      </div>
+
+      <!-- SHEET INPUTS -->
+      <div class="sheet-section">
+        <div class="grid cols-4">
+          <div>
+            <span class="small muted" style="display:block; margin-bottom:4px;">Challan Qty</span>
+            <div class="split-qty">
+              <input type="number" name="challan_reams" min="0" step="1" value="0" aria-label="Challan Reams">
+              <span class="unit-tag">R</span>
+              <input type="number" name="challan_sheets" min="0" step="1" value="0" aria-label="Challan Sheets">
+              <span class="unit-tag">S</span>
+            </div>
+          </div>
+          <div>
+            <span class="small muted" style="display:block; margin-bottom:4px;">Received Qty *</span>
+            <div class="split-qty">
+              <input type="number" name="received_reams" min="0" step="1" value="0" onchange="copyRecToAcc(this)" aria-label="Received Reams">
+              <span class="unit-tag">R</span>
+              <input type="number" name="received_sheets" min="0" step="1" value="0" onchange="copyRecToAcc(this)" aria-label="Received Sheets">
+              <span class="unit-tag">S</span>
+            </div>
+          </div>
+          <div>
+            <span class="small muted" style="display:block; margin-bottom:4px;">Accepted Stock IN *</span>
+            <div class="split-qty">
+              <input type="number" name="accepted_reams" min="0" step="1" value="0" aria-label="Accepted Reams">
+              <span class="unit-tag">R</span>
+              <input type="number" name="accepted_sheets" min="0" step="1" value="0" aria-label="Accepted Sheets">
+              <span class="unit-tag">S</span>
+            </div>
+          </div>
+          <div>
+            <span class="small muted" style="display:block; margin-bottom:4px;">Damaged / Short</span>
+            <div class="split-qty">
+              <input type="number" name="damaged_reams" min="0" step="1" value="0" aria-label="Damaged Reams">
+              <span class="unit-tag">R</span>
+              <input type="number" name="damaged_sheets" min="0" step="1" value="0" aria-label="Damaged Sheets">
+              <span class="unit-tag">S</span>
+            </div>
+          </div>
+        </div>
+        <div class="muted small spr-note" style="margin-top: 6px;"></div>
+      </div>
+
+      <!-- REEL INPUTS + SHARED OPTIONAL WEIGHT -->
+      <div class="grid cols-3" style="margin-top: 10px;">
+        <label class="weight-label">
+          <span class="weight-title">Weight (KG)</span>
+          <input type="number" name="weight_kg" min="0" step="0.001" value="0">
+        </label>
+        <label class="reel-only" style="display: none;">
+          Reel Count
+          <input type="number" name="reel_count" min="0" step="1" placeholder="e.g. 4">
+        </label>
+        <label class="reel-only" style="display: none;">
+          Reel Serial / Lot Numbers
+          <input type="text" name="reel_numbers" placeholder="e.g. RL-101, RL-102">
+        </label>
+        <label class="line-remarks-wrap" style="grid-column: span 2;">
+          Line Note
+          <input type="text" name="line_remarks" placeholder="Bundle / godown stack remarks">
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <a class="button" href="/app/paper/receipts">Cancel</a>
+    <button type="submit" class="button primary">Verify &amp; Post Receipt to Warehouse Stock</button>
+  </div>
+</form>
+
+<script>
+function syncReceiptRow(sel) {
+  const row = sel.closest('.receipt-row');
+  const opt = sel.options[sel.selectedIndex];
+  const form = opt ? (opt.dataset.form || '') : '';
+  const unitId = opt ? (opt.dataset.unit || '') : '';
+  const spr = opt ? (opt.dataset.spr || '500') : '500';
+  row.querySelector('input[name="unit_id"]').value = unitId;
+
+  const badge = row.querySelector('.form-badge');
+  const sheetSec = row.querySelector('.sheet-section');
+  const reelFields = row.querySelectorAll('.reel-only');
+  const weightTitle = row.querySelector('.weight-title');
+  const remWrap = row.querySelector('.line-remarks-wrap');
+  const sprNote = row.querySelector('.spr-note');
+
+  if (form === 'REEL') {
+    badge.textContent = 'REEL (KG)';
+    badge.className = 'badge warn form-badge';
+    sheetSec.style.display = 'none';
+    ['challan_reams','challan_sheets','received_reams','received_sheets','accepted_reams','accepted_sheets','damaged_reams','damaged_sheets']
+      .forEach(n => row.querySelector('input[name="' + n + '"]').value = '0');
+    reelFields.forEach(el => el.style.display = 'flex');
+    weightTitle.textContent = 'Accepted Reel Weight (KG) *';
+    remWrap.style.gridColumn = 'span 3';
+    sprNote.textContent = '';
+  } else {
+    badge.textContent = form === 'SHEET' ? ('SHEET (' + spr + ' sh/rm)') : 'Select item';
+    badge.className = form === 'SHEET' ? 'badge ok form-badge' : 'badge form-badge';
+    sheetSec.style.display = 'block';
+    reelFields.forEach(el => {
+      el.style.display = 'none';
+      const inp = el.querySelector('input');
+      if (inp) inp.value = '';
+    });
+    weightTitle.textContent = 'Gross / Theoretical Weight (KG, Optional)';
+    remWrap.style.gridColumn = 'span 2';
+    sprNote.textContent = form === 'SHEET' ? ('Conversion: 1 Ream = ' + spr + ' Sheets') : '';
+  }
+}
+
+function copyRecToAcc(inp) {
+  const row = inp.closest('.receipt-row');
+  const rr = row.querySelector('input[name="received_reams"]');
+  const rs = row.querySelector('input[name="received_sheets"]');
+  const ar = row.querySelector('input[name="accepted_reams"]');
+  const as = row.querySelector('input[name="accepted_sheets"]');
+  if (ar.value === '0' && as.value === '0') {
+    ar.value = rr.value || '0';
+    as.value = rs.value || '0';
+  }
+}
+
+function addReceiptRow() {
+  const container = document.getElementById('receipt-lines');
+  const clone = container.querySelector('.receipt-row').cloneNode(true);
+  clone.querySelector('select[name="paper_item_id"]').selectedIndex = 0;
+  clone.querySelectorAll('input').forEach(inp => {
+    if (inp.type === 'number') inp.value = (inp.name === 'reel_count') ? '' : '0';
+    else inp.value = '';
+  });
+  syncReceiptRow(clone.querySelector('select[name="paper_item_id"]'));
+  container.appendChild(clone);
+}
+
+function removeReceiptRow(btn) {
+  const container = document.getElementById('receipt-lines');
+  if (container.querySelectorAll('.receipt-row').length > 1) {
+    btn.closest('.receipt-row').remove();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#receipt-lines select[name="paper_item_id"]').forEach(syncReceiptRow);
+});
+</script>
+{% endblock %}

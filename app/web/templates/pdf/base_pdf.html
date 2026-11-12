@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>{{ title }} — Printing Department</title>
+  <style>
+    @page {
+      size: {{ paper_css_size }};
+      margin: 20mm 11mm 17mm 11mm;
+      @top-left {
+        content: "Printing Department — {{ doc_title_attr }}";
+        font-family: "DejaVu Sans", Arial, sans-serif;
+        font-size: 7.5pt;
+        font-weight: 700;
+        color: #1e3a8a;
+        border-bottom: 0.5pt solid #cbd5e1;
+        padding-bottom: 3pt;
+        vertical-align: bottom;
+      }
+      @top-right {
+        content: "{{ header_right_attr }}";
+        font-family: "DejaVu Sans", Arial, sans-serif;
+        font-size: 7.5pt;
+        color: #475569;
+        border-bottom: 0.5pt solid #cbd5e1;
+        padding-bottom: 3pt;
+        vertical-align: bottom;
+      }
+      @bottom-left {
+        content: "Printing Department · Official Document · Generated {{ generated_at }}{% if generated_by_attr %} by {{ generated_by_attr }}{% endif %}";
+        font-family: "DejaVu Sans", Arial, sans-serif;
+        font-size: 7.2pt;
+        color: #64748b;
+        border-top: 0.5pt solid #cbd5e1;
+        padding-top: 3pt;
+        vertical-align: top;
+      }
+      @bottom-right {
+        content: "Page " counter(page) " of " counter(pages) "  ({{ paper_badge }})";
+        font-family: "DejaVu Sans", Arial, sans-serif;
+        font-size: 7.2pt;
+        font-weight: 600;
+        color: #475569;
+        border-top: 0.5pt solid #cbd5e1;
+        padding-top: 3pt;
+        vertical-align: top;
+      }
+    }
+
+    @page :first {
+      margin-top: 11mm;
+      @top-left { content: none; border: none; }
+      @top-right { content: none; border: none; }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: "DejaVu Sans", Arial, Helvetica, sans-serif;
+      font-size: {{ body_font_size or '8.5pt' }};
+      line-height: 1.38;
+      color: #0f172a;
+    }
+
+    /* Official Printing Department Masthead */
+    .masthead {
+      border: 1.5pt solid {{ accent_dark or '#1e3a8a' }};
+      border-top: 4pt solid {{ accent_primary or '#1e40af' }};
+      background: #f8fafc;
+      padding: 9pt 12pt;
+      margin-bottom: 9pt;
+      display: table;
+      width: 100%;
+    }
+    .masthead-main {
+      display: table-cell;
+      vertical-align: middle;
+      width: 72%;
+    }
+    .masthead-aside {
+      display: table-cell;
+      vertical-align: middle;
+      text-align: right;
+      width: 28%;
+      font-size: 7.8pt;
+      color: #475569;
+    }
+    .dept-title {
+      font-size: 14pt;
+      font-weight: 800;
+      letter-spacing: 0.4pt;
+      text-transform: uppercase;
+      color: {{ accent_dark or '#0f172a' }};
+      margin: 0;
+    }
+    .subsystem-line {
+      font-size: 8.5pt;
+      font-weight: 600;
+      color: {{ accent_primary or '#1e40af' }};
+      margin: 1.5pt 0 3pt;
+    }
+    .doc-title {
+      font-size: 11.5pt;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 2pt 0 0;
+    }
+    .doc-subtitle {
+      font-size: 8pt;
+      color: #475569;
+      margin: 2pt 0 0;
+    }
+    .paper-pill {
+      display: inline-block;
+      padding: 2pt 6pt;
+      border-radius: 3pt;
+      background: {{ accent_soft or '#eff6ff' }};
+      border: 0.75pt solid {{ accent_border or '#bfdbfe' }};
+      color: {{ accent_primary or '#1e40af' }};
+      font-weight: 700;
+      font-size: 7.2pt;
+      text-transform: uppercase;
+      margin-bottom: 3pt;
+    }
+
+    /* Key-value metadata band */
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 9pt;
+    }
+    .meta-table td {
+      border: 0.6pt solid #cbd5e1;
+      padding: 4.5pt 7pt;
+      background: #ffffff;
+      vertical-align: top;
+    }
+    .meta-label {
+      display: block;
+      font-size: 6.8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.35pt;
+      color: #64748b;
+      font-weight: 700;
+      margin-bottom: 1.5pt;
+    }
+    .meta-value {
+      font-size: 8.5pt;
+      font-weight: 600;
+      color: #0f172a;
+      overflow-wrap: break-word;
+    }
+
+    /* Ledger / Line items tables */
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: auto;
+    }
+    table.data-table thead {
+      display: table-header-group;
+    }
+    table.data-table th {
+      background: {{ accent_dark or '#1e3a8a' }};
+      color: #ffffff;
+      font-size: {{ table_font_size or '7.8pt' }};
+      font-weight: 700;
+      text-align: left;
+      padding: 5pt 5.5pt;
+      border: 0.6pt solid {{ accent_dark or '#1e3a8a' }};
+      white-space: normal;
+    }
+    table.data-table th.num,
+    table.data-table td.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    table.data-table td {
+      font-size: {{ table_font_size or '7.8pt' }};
+      padding: 4.2pt 5.5pt;
+      border: 0.5pt solid #cbd5e1;
+      vertical-align: top;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+    table.data-table tbody tr {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    table.data-table tbody tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+    table.data-table tfoot td {
+      background: #eff6ff;
+      font-weight: 700;
+      border-top: 1.2pt solid {{ accent_dark or '#1e3a8a' }};
+    }
+
+    .summary-strip {
+      margin-top: 7pt;
+      font-size: 7.8pt;
+      color: #475569;
+      display: table;
+      width: 100%;
+    }
+    .summary-strip .left { display: table-cell; text-align: left; }
+    .summary-strip .right { display: table-cell; text-align: right; font-weight: 700; color: #0f172a; }
+
+    .notes-box {
+      margin-top: 9pt;
+      border: 0.6pt solid #cbd5e1;
+      background: #f8fafc;
+      padding: 6pt 8pt;
+      font-size: 8pt;
+      break-inside: avoid;
+    }
+
+    .signature-grid {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14pt;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .signature-grid td {
+      border: 0.6pt solid #cbd5e1;
+      padding: 6pt 8pt;
+      vertical-align: bottom;
+      height: 46pt;
+      width: {{ sig_width or '33.3%' }};
+    }
+    .sig-role {
+      font-size: 7pt;
+      text-transform: uppercase;
+      color: #64748b;
+      font-weight: 700;
+      margin-bottom: 18pt;
+    }
+    .sig-line {
+      border-top: 0.75pt solid #475569;
+      padding-top: 3pt;
+      font-size: 7.8pt;
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .empty-state {
+      border: 0.75pt dashed #94a3b8;
+      padding: 14pt;
+      text-align: center;
+      color: #64748b;
+      font-size: 9pt;
+      margin-top: 6pt;
+    }
+  </style>
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-main">
+      <div class="dept-title">Printing Department</div>
+      <div class="subsystem-line">{{ subsystem_label or 'Central Store &amp; Paper Warehouse Management System' }}</div>
+      <div class="doc-title">{{ title }}</div>
+      {% if subtitle %}<div class="doc-subtitle">{{ subtitle }}</div>{% endif %}
+    </div>
+    <div class="masthead-aside">
+      <div class="paper-pill">{{ paper_badge }}</div><br />
+      {% if ref_no %}<div><strong>Ref:</strong> {{ ref_no }}</div>{% endif %}
+      {% if doc_date %}<div><strong>Date:</strong> {{ doc_date }}</div>{% endif %}
+      <div><strong>Printed:</strong> {{ generated_at }}</div>
+    </div>
+  </header>
+
+  {% if meta_rows %}
+  <table class="meta-table">
+    {% for row in meta_rows %}
+    <tr>
+      {% for cell in row %}
+      <td colspan="{{ cell.colspan or 1 }}" style="width: {{ cell.width or 'auto' }};">
+        <span class="meta-label">{{ cell.label }}</span>
+        <span class="meta-value">{{ cell.value }}</span>
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% block content %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,45 @@
+{% extends "base_pdf.html" %}
+{% block content %}
+{% if rows %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th class="num" style="width: 24pt;">#</th>
+      {% for col in col_specs %}
+      <th class="{{ 'num' if col.numeric else '' }}">{{ col.label }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in formatted_rows %}
+    <tr>
+      <td class="num">{{ loop.index }}</td>
+      {% for cell in r %}
+      <td class="{{ 'num' if cell.numeric else '' }}">{{ cell.text }}</td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="summary-strip">
+  <div class="left">Records printed: {{ formatted_rows | length }}{% if search_term %} · Search filter: “{{ search_term }}”{% endif %}</div>
+  <div class="right">Printing Department · Official Register</div>
+</div>
+{% else %}
+<div class="empty-state">No records matched the selected store, financial year, or filter criteria.</div>
+{% endif %}
+
+{% if signatures %}
+<table class="signature-grid">
+  <tr>
+    {% for sig in signatures %}
+    <td>
+      <div class="sig-role">{{ sig.role }}</div>
+      <div class="sig-line">{{ sig.label }}</div>
+    </td>
+    {% endfor %}
+  </tr>
+</table>
+{% endif %}
+{% endblock %}
+

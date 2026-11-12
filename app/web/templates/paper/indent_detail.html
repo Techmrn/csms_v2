@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Paper Indent {{ indent.indent_no }}{% endblock %}
+{% block page_title %}Paper Indent &amp; Issue Voucher{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">SECTION PAPER {{ indent.request_source }} INDENT</div>
+    <h1>{{ indent.indent_no }}</h1>
+    <p class="muted small">
+      Warehouse: <strong>{{ indent.store.name if indent.store else indent.store_id }}</strong> ·
+      Section: <strong>{{ indent.section.name if indent.section else indent.section_id }}</strong> ·
+      Issue: <strong>{{ indent.issue.issue_no if indent.issue else 'Pending Issue' }}</strong>
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/app/paper/indents?store_id={{ indent.store_id }}">← Back to Section Indents</a>
+    <a class="button primary" href="/app/paper/indents/{{ indent.id }}.pdf?paper_size=a4_portrait">Download PDF (A4)</a>
+    <a class="button" href="/app/paper/indents/{{ indent.id }}.pdf?paper_size=a3_landscape">A3 PDF</a>
+    <button class="button" type="button" onclick="window.print()">Print Voucher</button>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 16px;">
+  <div class="grid cols-4">
+    <div>
+      <div class="muted small">Indent Date</div>
+      <strong>{{ indent.indent_date }}</strong>
+    </div>
+    <div>
+      <div class="muted small">Work Order / Job No</div>
+      <strong>{{ indent.job_no or 'General Production Run' }}</strong>
+    </div>
+    <div>
+      <div class="muted small">Request Mode</div>
+      <span class="badge {% if indent.request_source == 'ONLINE' %}info{% endif %}">{{ indent.request_source }}</span>
+    </div>
+    <div>
+      <div class="muted small">Status</div>
+      <span class="badge {% if indent.status in ['FINALIZED', 'APPROVED'] %}ok{% elif indent.status == 'SUBMITTED' %}warn{% endif %}">{{ indent.status }}</span>
+    </div>
+  </div>
+  {% if indent.remarks %}
+  <div style="margin-top: 10px;"><strong>Remarks:</strong> {{ indent.remarks }}</div>
+  {% endif %}
+</div>
+
+<div class="card table-card" style="margin-bottom: 18px;">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Paper Item Specification</th>
+        <th>Form</th>
+        <th class="num">Requested Qty</th>
+        <th class="num">Actual Issued Qty</th>
+        <th class="num">Weight (KG)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in indent.lines %}
+      {% set item = line.paper_item %}
+      {% set ftype = item.form_type if item else 'SHEET' %}
+      {% set spr = item.sheets_per_ream if item else 500 %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>
+          <strong>{{ item.name if item else line.paper_item_id }}</strong>
+          <div class="muted small">{{ item.code if item else '' }}{% if item %} · {{ item.gsm }} GSM{% endif %}</div>
+        </td>
+        <td><span class="badge">{{ ftype }}</span></td>
+        <td class="num">{{ format_paper(ftype, line.requested_sheets, line.requested_weight_kg or line.requested_quantity, spr) }}</td>
+        <td class="num">
+          {% if line.issued_sheets is not none or (line.issued_weight_kg is not none and line.issued_weight_kg > 0) or indent.status == 'FINALIZED' %}
+            <strong style="color: var(--ok);">{{ format_paper(ftype, line.issued_sheets or 0, line.issued_weight_kg or 0, spr) }}</strong>
+          {% else %}
+            <span class="muted">Pending issue</span>
+          {% endif %}
+        </td>
+        <td class="num">{{ '%.3f'|format(line.issued_weight_kg or line.requested_weight_kg or 0) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if can_issue %}
+<div class="card form-card" style="border: 2px solid var(--brand); margin-bottom: 18px;">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">WAREHOUSEMAN FULFILLMENT</div>
+      <h3>Issue Paper Against Section Request</h3>
+    </div>
+  </div>
+  <p class="small muted">Verify server-derived warehouse availability and enter the actual quantity issued (partial or zero permitted).</p>
+
+  <form method="post" action="/app/paper/indents/{{ indent.id }}/issue" class="stack">
+    <div class="grid cols-2">
+      <label>
+        Issue Date *
+        <input type="date" name="issue_date" value="{{ today }}" required>
+      </label>
+      <label>
+        Issue Remarks
+        <input name="remarks" placeholder="Issued against online section requisition">
+      </label>
+    </div>
+
+    <div class="card table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Paper Variety</th>
+            <th>Requested</th>
+            <th>Available in Warehouse</th>
+            <th style="min-width: 220px;">Issue Quantity *</th>
+            <th>Line Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in indent.lines %}
+          {% set item = line.paper_item %}
+          {% set ftype = item.form_type if item else 'SHEET' %}
+          {% set spr = item.sheets_per_ream if item else 500 %}
+          {% set req_rs = from_total_sheets(line.requested_sheets, spr) %}
+          <tr>
+            <td>
+              <strong>{{ item.name if item else line.paper_item_id }}</strong>
+              <input type="hidden" name="indent_line_id" value="{{ line.id }}">
+            </td>
+            <td class="small">{{ format_paper(ftype, line.requested_sheets, line.requested_weight_kg or line.requested_quantity, spr) }}</td>
+            <td><span class="badge ok">{{ avail_map.get(line.id, '0') }}</span></td>
+            <td>
+              {% if ftype == 'REEL' %}
+              <input type="hidden" name="issued_reams" value="0">
+              <input type="hidden" name="issued_sheets" value="0">
+              <div class="split-qty">
+                <input type="number" name="weight_kg" min="0" step="0.001" value="{{ line.requested_weight_kg or line.requested_quantity }}" required>
+                <span class="unit-tag">KG</span>
+              </div>
+              {% else %}
+              <div class="split-qty">
+                <input type="number" name="issued_reams" min="0" step="1" value="{{ req_rs[0] }}" aria-label="Issued Reams">
+                <span class="unit-tag">R</span>
+                <input type="number" name="issued_sheets" min="0" step="1" value="{{ req_rs[1] }}" aria-label="Issued Sheets">
+                <span class="unit-tag">S</span>
+              </div>
+              <input type="hidden" name="weight_kg" value="0">
+              {% endif %}
+            </td>
+            <td>
+              <input type="text" name="line_remarks" placeholder="Optional note">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="button primary">Approve &amp; Issue Paper Stock</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 10px;">
+    <div>
+      <div style="border-top: 1px solid var(--border); width: 210px; padding-top: 6px; font-size: 13px;">
+        <strong>Section Receiver</strong><br>
+        <span class="muted small">{{ indent.section.name if indent.section else 'Press Section' }}</span>
+      </div>
+    </div>
+    <div style="text-align: right;">
+      <div style="border-top: 1px solid var(--border); width: 210px; padding-top: 6px; font-size: 13px;">
+        <strong>Warehouseman</strong><br>
+        <span class="muted small">{{ indent.store.name if indent.store else 'Press Paper Warehouse' }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

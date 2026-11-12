@@ -27,9 +27,10 @@ class RegisterService:
         self.session = session
         self.auth = AuthorizationService(session)
 
-    async def _scope(self, actor_id: int, store_id: int | None = None) -> list[int] | None:
-        visible = await self.auth.get_visible_stores(actor_id)
+    async def _scope(self, actor_id: int, store_id: int | None = None) -> list[int]:
+        visible = await self.auth.get_visible_general_stores(actor_id)
         if store_id is not None:
+            await self.auth.require_general_store(store_id)
             await self.auth.require_store_visibility(actor_id, store_id)
         return visible
 
@@ -104,6 +105,7 @@ class RegisterService:
                 IssueLine.id,
                 Issue.issue_no,
                 Issue.issue_date,
+                Indent.indent_no.label("indent_no"),
                 Store.name.label("store_name"),
                 Office.name.label("office_name"),
                 Section.name.label("section_name"),
@@ -118,6 +120,7 @@ class RegisterService:
             .join(Office, Office.id == Issue.destination_office_id)
             .join(Item, Item.id == IssueLine.item_id)
             .join(Unit, Unit.id == IssueLine.unit_id)
+            .outerjoin(Indent, Indent.id == Issue.indent_id)
             .outerjoin(Section, Section.id == Issue.destination_section_id)
             .where(Issue.status == "FINALIZED")
         )
@@ -130,7 +133,15 @@ class RegisterService:
             stmt = stmt.where(Issue.issue_date <= to_date)
         if search:
             term = f"%{search.strip()}%"
-            stmt = stmt.where(or_(Issue.issue_no.ilike(term), Office.name.ilike(term), Item.code.ilike(term), Item.name.ilike(term)))
+            stmt = stmt.where(
+                or_(
+                    Issue.issue_no.ilike(term),
+                    Indent.indent_no.ilike(term),
+                    Office.name.ilike(term),
+                    Item.code.ilike(term),
+                    Item.name.ilike(term),
+                )
+            )
         stmt = stmt.order_by(Issue.issue_date.desc(), IssueLine.id.desc()).limit(1000)
         return [dict(row._mapping) for row in (await self.session.execute(stmt)).all()]
 
@@ -261,10 +272,15 @@ class RegisterService:
         rows.sort(key=lambda x: (x["movement_date"] is not None, x["movement_date"], x["id"]), reverse=True)
         return rows[:1000]
 
-    async def asset_register(self, actor_id: int, store_id: int | None = None) -> list[Asset]:
+    async def asset_register(self, actor_id: int, store_id: int | None = None, search: str | None = None) -> list[Asset]:
         await self.auth.require_permission(actor_id, "REGISTER_VIEW")
         visible = await self._scope(actor_id, store_id)
-        stmt = select(Asset).options(selectinload(Asset.item)).order_by(Asset.asset_no)
+        stmt = (
+            select(Asset)
+            .options(selectinload(Asset.item))
+            .join(Item, Item.id == Asset.item_id)
+            .order_by(Asset.asset_no)
+        )
         if store_id is not None:
             stmt = stmt.where(Asset.current_store_id == store_id)
         elif visible is not None:
@@ -303,7 +319,12 @@ class RegisterService:
         """
         await self.auth.require_permission(actor_id, "REGISTER_VIEW")
         visible = await self._scope(actor_id, store_id)
-        stmt = select(Asset).options(selectinload(Asset.item)).where(Asset.status.in_(("UNSERVICEABLE", "DISPOSED")))
+        stmt = (
+            select(Asset)
+            .options(selectinload(Asset.item))
+            .join(Item, Item.id == Asset.item_id)
+            .where(Asset.status.in_(("UNSERVICEABLE", "DISPOSED")))
+        )
         if store_id is not None:
             stmt = stmt.where(Asset.current_store_id == store_id)
         elif visible is not None:

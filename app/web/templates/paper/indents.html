@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Paper Indents &amp; Section Issues{% endblock %}
+{% block page_title %}Section Paper Indents &amp; Issues{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">PAPER WAREHOUSE · SECTION CONSUMPTION</div>
+    <h1>Section Paper Indents &amp; Issues</h1>
+    <p class="muted small">Online section paper requests and direct Warehouseman paper issues per job/work order.</p>
+  </div>
+  <div class="page-actions">
+    {% if "PAPER_ISSUE" in permissions %}
+    <a class="button primary" href="/app/paper/indents/new{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}">+ Direct Manual Issue</a>
+    {% elif "PAPER_INDENT_CREATE" in permissions %}
+    <a class="button primary" href="/app/paper/online-indents/new{% if selected_store %}?store_id={{ selected_store.id }}{% endif %}">+ Request Paper</a>
+    {% endif %}
+  </div>
+</div>
+
+<form class="context-bar" method="get" action="/app/paper/indents">
+  <div class="ctx-field">
+    <span class="ctx-label">Press Warehouse</span>
+    <select name="store_id" onchange="this.form.submit()">
+      {% for st in paper_stores %}
+      <option value="{{ st.id }}" {% if selected_store and selected_store.id == st.id %}selected{% endif %}>
+        {{ st.name }} ({{ st.office.name if st.office else st.code }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctx-field">
+    <span class="ctx-label">Financial Year</span>
+    <select name="financial_year_id" onchange="this.form.submit()">
+      {% for fy in financial_years %}
+      <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>
+        {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}{% if fy.is_closed %} [Closed]{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
+<div class="card table-card">
+  <table>
+    <thead>
+      <tr>
+        <th>Indent / Issue No</th>
+        <th>Date</th>
+        <th>Source</th>
+        <th>Section</th>
+        <th>Work Order / Job No</th>
+        <th>Warehouse</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ind in indents %}
+      <tr>
+        <td>
+          <strong>{{ ind.indent_no }}</strong>
+          {% if ind.issue %}<div class="muted small">Issue: {{ ind.issue.issue_no }}</div>{% endif %}
+        </td>
+        <td>{{ ind.indent_date }}</td>
+        <td>
+          {% if ind.request_source == 'ONLINE' %}
+          <span class="badge info">ONLINE REQ</span>
+          {% else %}
+          <span class="badge">PHYSICAL</span>
+          {% endif %}
+        </td>
+        <td>{{ ind.section.name if ind.section else ind.section_id }}</td>
+        <td>{{ ind.job_no or '—' }}</td>
+        <td>{{ ind.store.name if ind.store else ind.store_id }}</td>
+        <td>
+          {% if ind.status in ['FINALIZED', 'APPROVED'] %}
+          <span class="badge ok">{{ ind.status }}</span>
+          {% elif ind.status == 'SUBMITTED' %}
+          <span class="badge warn">PENDING ISSUE</span>
+          {% else %}
+          <span class="badge">{{ ind.status }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if ind.status == 'SUBMITTED' and "PAPER_ISSUE" in permissions %}
+          <a class="button sm primary" href="/app/paper/indents/{{ ind.id }}">Review &amp; Issue</a>
+          {% else %}
+          <a class="button sm" href="/app/paper/indents/{{ ind.id }}">View Voucher</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="muted" style="text-align: center; padding: 28px;">
+          No section paper indents or issues recorded for this warehouse and financial year.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

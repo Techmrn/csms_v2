@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Paper Receipt {{ receipt.receipt_no }}{% endblock %}
+{% block page_title %}Paper Receipt Voucher{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">STATIONERY DEPARTMENT PAPER RECEIPT VOUCHER</div>
+    <h1>{{ receipt.receipt_no }}</h1>
+    <p class="muted small">
+      Warehouse: <strong>{{ receipt.store.name if receipt.store else receipt.store_id }}</strong> ·
+      Date: <strong>{{ receipt.receipt_date }}</strong> ·
+      FY: <strong>{{ receipt.financial_year.year_name if receipt.financial_year else '' }}</strong>
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/app/paper/receipts?store_id={{ receipt.store_id }}">← Back to Receipts</a>
+    <a class="button primary" href="/app/paper/receipts/{{ receipt.id }}.pdf?paper_size=a4_landscape">Download PDF (A4)</a>
+    <a class="button" href="/app/paper/receipts/{{ receipt.id }}.pdf?paper_size=a3_landscape">A3 PDF</a>
+    <button class="button" type="button" onclick="window.print()">Print Voucher</button>
+    {% if "PAPER_RECEIPT_CREATE" in permissions %}
+    <a class="button" href="/app/paper/receipts/new?store_id={{ receipt.store_id }}">+ New Receipt</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 16px;">
+  <div class="grid cols-3" style="margin-bottom: 14px;">
+    <div>
+      <div class="muted small">Supplying Department</div>
+      <strong>{{ receipt.source_depot }}</strong>
+      {% if receipt.allotment_no %}<div class="muted small">Allotment: {{ receipt.allotment_no }}{% if receipt.allotment_date %} ({{ receipt.allotment_date }}){% endif %}</div>{% endif %}
+    </div>
+    <div>
+      <div class="muted small">Challan / Waybill</div>
+      <strong>{{ receipt.challan_no or '—' }}</strong>
+      {% if receipt.challan_date %}<div class="muted small">Date: {{ receipt.challan_date }}</div>{% endif %}
+    </div>
+    <div>
+      <div class="muted small">Receiving Press Warehouse</div>
+      <strong>{{ receipt.store.name if receipt.store else receipt.store_id }}</strong>
+      <div class="muted small">Status: <span class="badge ok">{{ receipt.status }}</span></div>
+    </div>
+  </div>
+  {% if receipt.vehicle_no or receipt.carrier_name %}
+  <div class="muted small">
+    Transport: Vehicle <strong>{{ receipt.vehicle_no or '—' }}</strong> · Carrier <strong>{{ receipt.carrier_name or '—' }}</strong>
+  </div>
+  {% endif %}
+  {% if receipt.remarks %}
+  <div style="margin-top: 10px;"><strong>Inspection Remarks:</strong> {{ receipt.remarks }}</div>
+  {% endif %}
+</div>
+
+<div class="card table-card" style="margin-bottom: 18px;">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Paper Item</th>
+        <th>Form</th>
+        <th class="num">Challan</th>
+        <th class="num">Received</th>
+        <th class="num">Accepted Stock IN</th>
+        <th class="num">Damaged / Short</th>
+        <th class="num">Weight (KG)</th>
+        <th>Reels / Remarks</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in receipt.lines %}
+      {% set item = line.paper_item %}
+      {% set ftype = item.form_type if item else 'SHEET' %}
+      {% set spr = item.sheets_per_ream if item else 500 %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>
+          <strong>{{ item.name if item else line.paper_item_id }}</strong>
+          <div class="muted small">{{ item.code if item else '' }}{% if item %} · {{ item.gsm }} GSM{% endif %}</div>
+        </td>
+        <td><span class="badge">{{ ftype }}</span></td>
+        <td class="num">{{ format_paper(ftype, line.challan_sheets, line.challan_quantity, spr) }}</td>
+        <td class="num">{{ format_paper(ftype, line.received_sheets, line.received_quantity, spr) }}</td>
+        <td class="num"><strong style="color: var(--ok);">{{ format_paper(ftype, line.accepted_sheets, line.weight_kg, spr) }}</strong></td>
+        <td class="num">{{ format_paper(ftype, line.damaged_sheets, line.damaged_quantity, spr) }}</td>
+        <td class="num">{{ '%.3f'|format(line.weight_kg or 0) }}</td>
+        <td class="small">
+          {% if line.reel_count or line.reel_numbers %}
+            Reels: {{ line.reel_count or 0 }} {% if line.reel_numbers %}({{ line.reel_numbers }}){% endif %}
+          {% endif %}
+          {% if line.remarks %}<div class="muted">{{ line.remarks }}</div>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: flex-end; padding-top: 12px;">
+    <div class="muted small">
+      Posted by: <strong>{{ receipt.poster.full_name if receipt.poster else 'Warehouseman' }}</strong>
+      {% if receipt.posted_at %} · {{ receipt.posted_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+    </div>
+    <div style="text-align: right;">
+      <div style="border-top: 1px solid var(--border); width: 220px; padding-top: 6px; font-size: 13px;">
+        <strong>Warehouseman</strong><br>
+        <span class="muted small">{{ receipt.store.name if receipt.store else 'Press Paper Warehouse' }}</span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

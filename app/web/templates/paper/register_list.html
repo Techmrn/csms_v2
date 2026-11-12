@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — {{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block content %}
+{% set q_store = request.query_params.get('store_id') %}
+{% set q_fy = request.query_params.get('financial_year_id') %}
+
+<div class="page-header">
+  <div>
+    <div class="eyebrow">PAPER WAREHOUSE REGISTER · AUDITABLE VIEW</div>
+    <h1>{{ title }}</h1>
+    <p class="muted small">{{ subtitle }}</p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/app/paper/registers">← All Paper Registers</a>
+    {% set pdf_store = (selected_store.id if kind == 'stock' and selected_store else q_store) %}
+    {% set pdf_fy = (selected_fy.id if kind == 'stock' and selected_fy else q_fy) %}
+    {% set pdf_base = request.url.path ~ '.pdf?' ~ (('store_id=' ~ pdf_store ~ '&') if pdf_store else '') ~ (('financial_year_id=' ~ pdf_fy ~ '&') if pdf_fy else '') ~ 'search=' ~ (search|urlencode) %}
+    <select id="pdf-paper-size" class="paper-size-select" aria-label="PDF Paper Size" onchange="var b=document.getElementById('download-pdf-btn'); b.href=b.dataset.basePdf+'&paper_size='+encodeURIComponent(this.value);">
+      <option value="auto">PDF: Auto (A4 / A3)</option>
+      <option value="a4_portrait">A4 Portrait</option>
+      <option value="a4_landscape">A4 Landscape</option>
+      <option value="a3_landscape">A3 Landscape</option>
+      <option value="a3_portrait">A3 Portrait</option>
+    </select>
+    <a id="download-pdf-btn" class="button primary" data-base-pdf="{{ pdf_base }}" href="{{ pdf_base }}&paper_size=auto">Download PDF</a>
+  </div>
+</div>
+
+<form class="context-bar" method="get" action="{{ request.url.path }}">
+  <div class="ctx-field">
+    <span class="ctx-label">Warehouse</span>
+    <select name="store_id">
+      {% if kind != 'stock' %}<option value="">All visible warehouses</option>{% endif %}
+      {% for st in paper_stores %}
+      <option value="{{ st.id }}"
+        {% if (kind == 'stock' and selected_store and selected_store.id == st.id) or (q_store and q_store == (st.id|string)) %}selected{% endif %}>
+        {{ st.name }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctx-field">
+    <span class="ctx-label">Financial Year</span>
+    <select name="financial_year_id">
+      {% if kind != 'stock' %}<option value="">All financial years</option>{% endif %}
+      {% for fy in financial_years %}
+      <option value="{{ fy.id }}"
+        {% if (kind == 'stock' and selected_fy and selected_fy.id == fy.id) or (q_fy and q_fy == (fy.id|string)) %}selected{% endif %}>
+        {{ fy.year_name }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctx-field" style="flex: 1; min-width: 180px;">
+    <span class="ctx-label">Search</span>
+    <input name="search" value="{{ search }}" placeholder="Item, voucher, challan, job..." aria-label="Search paper register">
+  </div>
+  <div class="ctx-field">
+    <span class="ctx-label">Rows</span>
+    <select name="page_size">
+      <option value="25" {% if page_size == 25 %}selected{% endif %}>25</option>
+      <option value="50" {% if page_size == 50 %}selected{% endif %}>50</option>
+      <option value="100" {% if page_size == 100 %}selected{% endif %}>100</option>
+    </select>
+  </div>
+  <button class="button" type="submit">Apply</button>
+</form>
+
+<div class="card table-card">
+  {% if kind == 'stock' %}
+  <table>
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>Paper Description</th>
+        <th>Form</th>
+        <th class="num">Opening</th>
+        <th class="num">Receipts IN</th>
+        <th class="num">Issues OUT</th>
+        <th class="num">Closing Balance</th>
+        <th class="num">Weight (KG)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><code>{{ r.code }}</code></td>
+        <td><strong>{{ r.name }}</strong><div class="muted small">{{ r.paper_type }} · {{ r.gsm }} GSM</div></td>
+        <td><span class="badge">{{ r.form_type }}</span></td>
+        <td class="num">{{ r.opening }}</td>
+        <td class="num">{{ r.inward }}</td>
+        <td class="num">{{ r.outward }}</td>
+        <td class="num"><strong>{{ r.closing }}</strong></td>
+        <td class="num">{{ r.weight_kg }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">No paper stock balances found for this warehouse and financial year.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% elif kind == 'receipts' %}
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Receipt No</th>
+        <th>Warehouse</th>
+        <th>Depot &amp; Challan</th>
+        <th>Paper Item</th>
+        <th class="num">Accepted</th>
+        <th class="num">Damaged</th>
+        <th class="num">Weight (KG)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.receipt_date }}</td>
+        <td><a href="/app/paper/receipts/{{ r.receipt_id }}"><strong>{{ r.receipt_no }}</strong></a></td>
+        <td>{{ r.warehouse_name }}</td>
+        <td class="small">{{ r.source_depot }}<div class="muted">Challan: {{ r.challan_no }}</div></td>
+        <td><strong>{{ r.item_name }}</strong><div class="muted small">{{ r.item_code }}</div></td>
+        <td class="num"><strong>{{ r.accepted }}</strong></td>
+        <td class="num">{{ r.damaged }}</td>
+        <td class="num">{{ r.weight_kg }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">No stationery paper receipts matched your filter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% elif kind == 'issues' %}
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Issue No</th>
+        <th>Warehouse</th>
+        <th>Section</th>
+        <th>Job / Indent</th>
+        <th>Paper Item</th>
+        <th class="num">Issued Qty</th>
+        <th class="num">Weight (KG)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.issue_date }}</td>
+        <td><a href="/app/paper/indents/{{ r.indent_id }}"><strong>{{ r.issue_no }}</strong></a></td>
+        <td>{{ r.warehouse_name }}</td>
+        <td>{{ r.section_name }}</td>
+        <td class="small">{{ r.job_no }}<div class="muted">{{ r.indent_no }}</div></td>
+        <td><strong>{{ r.item_name }}</strong><div class="muted small">{{ r.item_code }}</div></td>
+        <td class="num"><strong>{{ r.issued }}</strong></td>
+        <td class="num">{{ r.weight_kg }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">No section paper issues matched your filter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% elif kind == 'transfers' %}
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Transfer No</th>
+        <th>Mode</th>
+        <th>Route</th>
+        <th>Paper Item</th>
+        <th class="num">Dispatched</th>
+        <th class="num">Received</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.transfer_date }}</td>
+        <td><a href="/app/paper/transfers/{{ r.transfer_id }}"><strong>{{ r.transfer_no }}</strong></a></td>
+        <td><span class="badge">{{ r.transfer_mode }}</span></td>
+        <td class="small">{{ r.source_warehouse }} &rarr; {{ r.destination_warehouse }}<div class="muted">GP: {{ r.gate_pass_no }}</div></td>
+        <td><strong>{{ r.item_name }}</strong><div class="muted small">{{ r.item_code }}</div></td>
+        <td class="num">{{ r.dispatched }}</td>
+        <td class="num">{{ r.received }}</td>
+        <td><span class="badge">{{ r.status }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">No inter-press paper transfers matched your filter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% elif kind == 'opening' %}
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Opening No</th>
+        <th>Type</th>
+        <th>Warehouse</th>
+        <th>FY</th>
+        <th>Paper Item</th>
+        <th class="num">Opening Qty</th>
+        <th class="num">Weight (KG)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.opening_date }}</td>
+        <td><a href="/app/paper/opening-stock/{{ r.opening_id }}"><strong>{{ r.opening_no }}</strong></a></td>
+        <td><span class="badge">{{ r.opening_type }}</span></td>
+        <td>{{ r.warehouse_name }}</td>
+        <td>{{ r.fy_name }}</td>
+        <td><strong>{{ r.item_name }}</strong><div class="muted small">{{ r.item_code }}</div></td>
+        <td class="num"><strong>{{ r.opening_qty }}</strong></td>
+        <td class="num">{{ r.weight_kg }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">No opening stock lines matched your filter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Movement</th>
+        <th>Warehouse</th>
+        <th>Paper Item</th>
+        <th class="num">Inward</th>
+        <th class="num">Outward</th>
+        <th>Reference</th>
+        <th>Remarks</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.movement_date }}</td>
+        <td><span class="badge">{{ r.movement_type }}</span></td>
+        <td>{{ r.warehouse_name }}</td>
+        <td><strong>{{ r.item_name }}</strong><div class="muted small">{{ r.item_code }}</div></td>
+        <td class="num" style="color: var(--ok);">{{ r.inward }}</td>
+        <td class="num" style="color: var(--danger);">{{ r.outward }}</td>
+        <td>{{ r.reference_no }}</td>
+        <td class="muted small">{{ r.remarks }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">No paper movement ledger rows matched your filter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+{% if total %}
+<div class="context-bar" style="margin-top: 14px;">
+  <span class="muted small">{{ total }} records · Page {{ page }} of {{ pages }}</span>
+  <div style="margin-left: auto; display: flex; gap: 8px;">
+    {% if page > 1 %}
+    <a class="button sm" href="?store_id={{ q_store or '' }}&financial_year_id={{ q_fy or '' }}&search={{ search|urlencode }}&page={{ page - 1 }}&page_size={{ page_size }}">Previous</a>
+    {% endif %}
+    {% if page < pages %}
+    <a class="button sm" href="?store_id={{ q_store or '' }}&financial_year_id={{ q_fy or '' }}&search={{ search|urlencode }}&page={{ page + 1 }}&page_size={{ page_size }}">Next</a>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+

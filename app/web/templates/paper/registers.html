@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Paper Warehouse Registers{% endblock %}
+{% block page_title %}Paper Warehouse Registers{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">PAPER WAREHOUSE · DEDICATED REGISTERS &amp; AUDIT LEDGERS</div>
+    <h1>Paper Warehouse Registers</h1>
+    <p class="muted small">Paper stock, Stationery receipts, section issues, inter-press transfers, and FY opening registers — tracked independently from General Store registers.</p>
+  </div>
+</div>
+
+<form class="context-bar" method="get" action="/app/paper/registers">
+  <div class="ctx-field">
+    <span class="ctx-label">Press Warehouse</span>
+    <select name="store_id" onchange="this.form.submit()">
+      {% for st in paper_stores %}
+      <option value="{{ st.id }}" {% if selected_store and selected_store.id == st.id %}selected{% endif %}>
+        {{ st.name }} ({{ st.office.name if st.office else st.code }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctx-field">
+    <span class="ctx-label">Financial Year</span>
+    <select name="financial_year_id" onchange="this.form.submit()">
+      {% for fy in financial_years %}
+      <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>
+        {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}{% if fy.is_closed %} [Closed]{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctx-field">
+    <span class="ctx-label">PDF Paper Size</span>
+    <select id="paper-hub-size" class="paper-size-select" onchange="document.querySelectorAll('[data-pdf-link]').forEach(function(a){ var sep=a.dataset.baseHref.indexOf('?')>=0?'&':'?'; a.href=a.dataset.baseHref+sep+'paper_size='+encodeURIComponent(this.value); }.bind(this));">
+      <option value="auto">Auto (A4 / A3)</option>
+      <option value="a4_portrait">A4 Portrait</option>
+      <option value="a4_landscape">A4 Landscape</option>
+      <option value="a3_landscape">A3 Landscape</option>
+      <option value="a3_portrait">A3 Portrait</option>
+    </select>
+  </div>
+</form>
+
+{% set ctx_qs = '' %}
+{% if selected_store and selected_fy %}
+  {% set ctx_qs = '?store_id=' ~ selected_store.id ~ '&financial_year_id=' ~ selected_fy.id %}
+{% elif selected_store %}
+  {% set ctx_qs = '?store_id=' ~ selected_store.id %}
+{% elif selected_fy %}
+  {% set ctx_qs = '?financial_year_id=' ~ selected_fy.id %}
+{% endif %}
+
+<div class="kpi-grid cols-3">
+  <div class="card">
+    <div class="eyebrow">STOCK ACCOUNT</div>
+    <h3>Paper Stock Register</h3>
+    <p class="muted small">FY Opening, Receipts IN, Section/Transfer OUT, and Closing Balance in Reams+Sheets &amp; KG.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/paper/registers/stock{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/paper/registers/stock.pdf{{ ctx_qs }}" href="/app/paper/registers/stock.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">INWARD CONSIGNMENTS</div>
+    <h3>Stationery Receipt Register</h3>
+    <p class="muted small">All Stationery Department allotments, challan counts, accepted sheets/KG, and short/damaged receipts.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/paper/registers/receipts{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/paper/registers/receipts.pdf{{ ctx_qs }}" href="/app/paper/registers/receipts.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">SECTION CONSUMPTION</div>
+    <h3>Section &amp; Job Issue Register</h3>
+    <p class="muted small">Paper issued to Press printing sections against online requests &amp; direct work orders.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/paper/registers/issues{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/paper/registers/issues.pdf{{ ctx_qs }}" href="/app/paper/registers/issues.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">INTER-PRESS LOGISTICS</div>
+    <h3>Inter-Press Transfer Register</h3>
+    <p class="muted small">Pull requests &amp; Directorate push directives across peer Press Warehouses with gate pass audit.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/paper/registers/transfers{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/paper/registers/transfers.pdf{{ ctx_qs }}" href="/app/paper/registers/transfers.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">INITIALIZATION &amp; ROLLOVER</div>
+    <h3>Warehouse Opening Register</h3>
+    <p class="muted small">Initial warehouse setup balances and Financial Year closing carry-forward vouchers.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/paper/registers/opening{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/paper/registers/opening.pdf{{ ctx_qs }}" href="/app/paper/registers/opening.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="eyebrow">CHRONOLOGICAL AUDIT</div>
+    <h3>Paper Transaction Ledger</h3>
+    <p class="muted small">Immutable movement-by-movement audit log (`PaperStockMovement`) in Reams+Sheets and KG.</p>
+    <div class="actions" style="margin-top: 12px;">
+      <a class="button primary sm" href="/app/paper/registers/ledger{{ ctx_qs }}">Open Register</a>
+      <a class="button sm" data-pdf-link="1" data-base-href="/app/paper/registers/ledger.pdf{{ ctx_qs }}" href="/app/paper/registers/ledger.pdf{{ ctx_qs }}">PDF</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+

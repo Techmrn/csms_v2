@@ -1,21 +1,175 @@
 {% extends "base.html" %}
-{% block title %}CSMS V2 — Stores{% endblock %}
-{% block page_title %}Stores{% endblock %}
+{% block title %}CSMS V2 — Stores &amp; Warehouses{% endblock %}
+{% block page_title %}Stores &amp; Warehouses{% endblock %}
 {% block content %}
-<div class="card"><h2>Add Store</h2><form method="post" action="/app/admin/stores/new" class="grid cols-3" style="margin-top:14px">
-<label>Office<select name="office_id" required>{% for office in offices %}<option value="{{ office.id }}">{{ office.name }}</option>{% endfor %}</select></label>
-<label>Code<input name="code" required></label><label>Name<input name="name" required></label>
-<label>Store Type<select name="store_type"><option>CENTRAL</option><option>BRANCH</option><option>OTHER</option></select></label>
-<label class="check"><input type="checkbox" name="is_primary" checked> Primary</label><label>Remarks<input name="remarks"></label>
-<div><button class="button primary" type="submit">Save Store</button></div>
-</form></div>
-{% if edit_store %}<div class="card" style="margin-top:18px"><h2>Edit {{ edit_store.name }}</h2><form method="post" action="/app/admin/stores/{{ edit_store.id }}/save" class="grid cols-3">
-<label>Code<input value="{{ edit_store.code }}" disabled></label><label>Office<select name="office_id">{% for office in offices %}<option value="{{ office.id }}" {% if edit_store.office_id==office.id %}selected{% endif %}>{{ office.name }}</option>{% endfor %}</select></label>
-<label>Name<input name="name" value="{{ edit_store.name }}" required></label><label>Type<select name="store_type">{% for t in ['CENTRAL','BRANCH','OTHER'] %}<option {% if edit_store.store_type==t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
-<label class="check"><input type="checkbox" name="is_primary" {% if edit_store.is_primary %}checked{% endif %}> Primary</label><label>Remarks<input name="remarks" value="{{ edit_store.remarks or '' }}"></label>
-<label class="check"><input type="checkbox" name="is_active" {% if edit_store.is_active %}checked{% endif %}> Active</label><div><button class="button primary">Update Store</button><a class="button" href="/app/admin/stores">Cancel</a></div>
-</form></div>{% endif %}
-<div class="card table-card" style="margin-top:18px"><table><thead><tr><th>Code</th><th>Store</th><th>Office</th><th>Type</th><th>Active</th><th></th></tr></thead><tbody>
-{% for store in stores %}<tr><td>{{ store.code }}</td><td>{{ store.name }}</td><td>{{ store.office.name }}</td><td>{{ store.store_type }}</td><td>{{ 'Yes' if store.is_active else 'No' }}</td><td><a class="button" href="/app/admin/stores?edit={{ store.id }}">Edit</a></td></tr>{% else %}<tr><td colspan="6" class="empty">No stores</td></tr>{% endfor %}
-</tbody></table></div>
+
+<div class="page-header">
+  <div>
+    <div class="page-subtitle">Manage Directorate Central Store, Press General Stores, and Press Paper Warehouses.</div>
+  </div>
+  <button type="button" class="button primary" onclick="toggleCreateStorePanel()">+ Add Store / Warehouse</button>
+</div>
+
+<!-- Collapsible Creation Card (Hidden by default unless creating/editing) -->
+<div id="createStorePanel" class="card" style="display: none; margin-bottom: 20px; border-top: 3px solid var(--accent);">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+    <h2 style="margin: 0; font-size: 17px;">New Store or Paper Warehouse</h2>
+    <button type="button" class="button" style="padding: 4px 10px; font-size: 12px;" onclick="toggleCreateStorePanel()">Close</button>
+  </div>
+  <form method="post" action="/app/admin/stores/new" class="grid cols-3">
+    <label>Office / Press
+      <select name="office_id" required>
+        {% for office in offices %}
+        <option value="{{ office.id }}">{{ office.name }} ({{ office.office_type }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Facility Code
+      <input name="code" placeholder="e.g. KP-PAPER-WH" required>
+    </label>
+    <label>Facility Name
+      <input name="name" placeholder="e.g. Branch Press Paper Warehouse" required>
+    </label>
+    <label>Store Type
+      <select name="store_type" required>
+        <option value="BRANCH">📦 Branch General Store</option>
+        <option value="PAPER_WAREHOUSE">📰 Paper Warehouse (Press)</option>
+        <option value="CENTRAL">🏛️ Central Store (Directorate)</option>
+        <option value="OTHER">Other Store</option>
+      </select>
+    </label>
+    <label>Remarks
+      <input name="remarks" placeholder="Optional notes">
+    </label>
+    <div style="display: flex; align-items: center; justify-content: space-between; padding-top: 18px;">
+      <label class="choice"><input type="checkbox" name="is_primary" checked> Primary</label>
+      <button class="button primary" type="submit">Save Facility</button>
+    </div>
+  </form>
+</div>
+
+{% if edit_store %}
+<div class="card" style="margin-bottom: 20px; border: 2px solid var(--accent);">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px;">
+    <h2 style="margin: 0; font-size: 17px;">Edit {{ edit_store.name }}</h2>
+    <span class="badge">{{ edit_store.code }}</span>
+  </div>
+  <form method="post" action="/app/admin/stores/{{ edit_store.id }}/save" class="grid cols-3">
+    <label>Code<input value="{{ edit_store.code }}" disabled></label>
+    <label>Office
+      <select name="office_id" required>
+        {% for office in offices %}
+        <option value="{{ office.id }}" {% if edit_store.office_id==office.id %}selected{% endif %}>{{ office.name }} ({{ office.office_type }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Name<input name="name" value="{{ edit_store.name }}" required></label>
+    <label>Store Type
+      <select name="store_type" required>
+        <option value="BRANCH" {% if edit_store.store_type=='BRANCH' %}selected{% endif %}>📦 Branch General Store</option>
+        <option value="PAPER_WAREHOUSE" {% if edit_store.store_type=='PAPER_WAREHOUSE' %}selected{% endif %}>📰 Paper Warehouse (Press)</option>
+        <option value="CENTRAL" {% if edit_store.store_type=='CENTRAL' %}selected{% endif %}>🏛️ Central Store (Directorate)</option>
+        <option value="OTHER" {% if edit_store.store_type=='OTHER' %}selected{% endif %}>Other Store</option>
+      </select>
+    </label>
+    <label>Remarks<input name="remarks" value="{{ edit_store.remarks or '' }}"></label>
+    <div style="display: flex; gap: 14px; align-items: center; padding-top: 18px;">
+      <label class="choice"><input type="checkbox" name="is_primary" {% if edit_store.is_primary %}checked{% endif %}> Primary</label>
+      <label class="choice"><input type="checkbox" name="is_active" {% if edit_store.is_active %}checked{% endif %}> Active</label>
+    </div>
+    <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px;">
+      <a class="button" href="/app/admin/stores">Cancel</a>
+      <button class="button primary" type="submit">Update Facility</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+<!-- Filter Toolbar + Table Immediately at Top -->
+<div class="context-bar">
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <button type="button" class="pill-tab store-tab active" onclick="filterStores('ALL', this)">All ({{ stores|length }})</button>
+    <button type="button" class="pill-tab store-tab" onclick="filterStores('GENERAL', this)">
+      📦 General Stores ({% set gen_count = stores|selectattr('store_type', 'ne', 'PAPER_WAREHOUSE')|list|length %}{{ gen_count }})
+    </button>
+    <button type="button" class="pill-tab store-tab" onclick="filterStores('PAPER', this)">
+      📰 Paper Warehouses ({% set paper_count = stores|selectattr('store_type', 'eq', 'PAPER_WAREHOUSE')|list|length %}{{ paper_count }})
+    </button>
+  </div>
+  <input id="storeSearch" placeholder="Search code, name, or press..." style="min-width: 220px;" oninput="searchStores(this.value)">
+</div>
+
+<div class="card table-card">
+  <table>
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>Facility Name</th>
+        <th>Office / Press</th>
+        <th>Facility Type</th>
+        <th>Primary</th>
+        <th>Status</th>
+        <th style="text-align: right;">Action</th>
+      </tr>
+    </thead>
+    <tbody id="storesTableBody">
+      {% for store in stores %}
+      <tr class="store-row" data-type="{{ 'PAPER' if store.store_type == 'PAPER_WAREHOUSE' else 'GENERAL' }}">
+        <td><code>{{ store.code }}</code></td>
+        <td>
+          <strong>{{ store.name }}</strong>
+          {% if store.remarks %}<div class="muted small">{{ store.remarks }}</div>{% endif %}
+        </td>
+        <td>{{ store.office.name }} <span class="muted small">({{ store.office.office_type }})</span></td>
+        <td>
+          {% if store.store_type == 'PAPER_WAREHOUSE' %}
+          <span class="badge" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a;">📰 Paper Warehouse</span>
+          {% elif store.store_type == 'CENTRAL' %}
+          <span class="badge" style="background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd;">🏛️ Central Store</span>
+          {% elif store.store_type == 'BRANCH' %}
+          <span class="badge" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;">📦 Branch General</span>
+          {% else %}
+          <span class="badge">{{ store.store_type }}</span>
+          {% endif %}
+        </td>
+        <td>{{ 'Yes' if store.is_primary else 'No' }}</td>
+        <td>
+          {% if store.is_active %}<span class="badge" style="background:#dcfce7;color:#15803d;">Active</span>
+          {% else %}<span class="badge" style="background:#fee2e2;color:#b91c1c;">Inactive</span>{% endif %}
+        </td>
+        <td style="text-align: right;">
+          <a class="button" style="padding: 4px 10px; font-size: 12px;" href="/app/admin/stores?edit={{ store.id }}">Edit</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="empty">No stores configured</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>
+let currentStoreTypeFilter = 'ALL';
+function toggleCreateStorePanel() {
+  const panel = document.getElementById('createStorePanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+function applyStoreFilters() {
+  const q = (document.getElementById('storeSearch').value || '').trim().toLowerCase();
+  document.querySelectorAll('.store-row').forEach(row => {
+    const typeOk = currentStoreTypeFilter === 'ALL' || row.dataset.type === currentStoreTypeFilter;
+    const textOk = !q || row.innerText.toLowerCase().includes(q);
+    row.style.display = (typeOk && textOk) ? '' : 'none';
+  });
+}
+function filterStores(filterType, btn) {
+  currentStoreTypeFilter = filterType;
+  document.querySelectorAll('.store-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  applyStoreFilters();
+}
+function searchStores() {
+  applyStoreFilters();
+}
+</script>
 {% endblock %}

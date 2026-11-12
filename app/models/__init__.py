@@ -64,8 +64,32 @@ __all__ = [
     "ReceiptLineAsset",
     "AssetRepair",
     "TransferLineAsset",
+    "PaperItem",
+    "PaperStockAccount",
+    "PaperStockMovement",
+    "PaperReceipt",
+    "PaperReceiptLine",
+    "PaperIndent",
+    "PaperIndentLine",
+    "PaperIssue",
+    "PaperIssueLine",
+    "PaperTransfer",
+    "PaperTransferLine",
 ]
 
+from app.paper_store.models import (
+    PaperItem,
+    PaperStockAccount,
+    PaperStockMovement,
+    PaperReceipt,
+    PaperReceiptLine,
+    PaperIndent,
+    PaperIndentLine,
+    PaperIssue,
+    PaperIssueLine,
+    PaperTransfer,
+    PaperTransferLine,
+)
 from app.models.requisition import CentralStoreRequisition, CentralStoreRequisitionLine
 from app.models.transfer import StockTransfer, StockTransferLine, TransferDiscrepancy, TransferLineAsset
 from app.models.stock_control import (

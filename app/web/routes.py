@@ -76,10 +76,13 @@ from app.services.stock import StockService
 from app.services.stock_return import StockReturnService
 from app.services.registers import RegisterService
 from app.web.auth import get_web_current_user
-from app.services.pdf_reports import make_register_pdf, make_transfer_gate_pass_pdf
+from app.services.pdf_reports import make_register_pdf, make_transfer_gate_pass_pdf, make_voucher_pdf
 
 WEB_ROOT = Path(__file__).resolve().parent
 TEMPLATES = Jinja2Templates(directory=str(WEB_ROOT / "templates"))
+from app.paper_store.services.units import format_paper_balance as _format_paper_balance, from_total_sheets as _from_total_sheets
+TEMPLATES.env.globals["format_paper"] = _format_paper_balance
+TEMPLATES.env.globals["from_total_sheets"] = _from_total_sheets
 router = APIRouter(tags=["web"])
 
 MENU = [
@@ -93,6 +96,7 @@ MENU = [
     ("Requisitions", "/app/requisitions", "REQUISITION_VIEW"),
     ("Transfers", "/app/transfers", "STOCK_TRANSFER_VIEW"),
     ("Receipts", "/app/receipts", "STOCK_RECEIPT_VIEW"),
+    ("Paper Store", "/app/paper/receipts", "PAPER_VIEW"),
     ("Returns", "/app/returns", "STOCK_RETURN_VIEW"),
     ("Petty Purchase", "/app/petty-purchases", "PETTY_PURCHASE_VIEW"),
     ("Registers", "/app/registers", "REGISTER_VIEW"),
@@ -176,6 +180,138 @@ def visible_menu(user: User) -> list[dict[str, str | None]]:
     return menu
 
 
+def grouped_nav(user: User) -> list[dict]:
+    perms = permission_codes(user)
+    groups = []
+
+    # 1. Main / Overview
+    groups.append({
+        "title": None,
+        "badge_color": "home",
+        "links": [
+            {"label": "Dashboard", "href": "/app", "icon": "home"},
+            {"label": "My Activity", "href": "/app/my-activity", "icon": "activity"},
+        ],
+    })
+
+    # 2. General Store (Consumables & Assets — including Store Registers)
+    gen_items = []
+    if "STOCK_VIEW" in perms:
+        gen_items.append({"label": "Stock Ledger", "href": "/app/stock", "icon": "stock"})
+    if "STOCK_OPENING_CREATE" in perms:
+        gen_items.append({"label": "Store Opening Stock", "href": "/app/opening-stock", "icon": "opening"})
+    if "STOCK_RECEIPT_VIEW" in perms:
+        gen_items.append({"label": "Supplier Receipts", "href": "/app/receipts", "icon": "receipt"})
+    if "INDENT_PROCESS" in perms:
+        gen_items.append({"label": "Manual Indents", "href": "/app/indents", "icon": "indent"})
+    if "INDENT_VIEW" in perms:
+        gen_items.append({"label": "Online Indents", "href": "/app/online-indents", "icon": "online"})
+
+    requisition_permissions = {
+        "REQUISITION_VIEW",
+        "REQUISITION_CREATE",
+        "REQUISITION_APPROVE_BRANCH",
+        "REQUISITION_APPROVE_CENTRAL",
+        "STOCK_TRANSFER_DISPATCH",
+    }
+    if perms.intersection(requisition_permissions):
+        gen_items.append({"label": "Requisitions", "href": "/app/requisitions", "icon": "req"})
+
+    transfer_permissions = {
+        "STOCK_TRANSFER_VIEW",
+        "STOCK_TRANSFER_CREATE",
+        "STOCK_TRANSFER_APPROVE_BRANCH",
+        "STOCK_TRANSFER_APPROVE_DIRECTORATE",
+        "STOCK_TRANSFER_AUTHORIZE_SUPPLY",
+        "STOCK_TRANSFER_DISPATCH",
+        "STOCK_TRANSFER_RECEIVE",
+    }
+    if perms.intersection(transfer_permissions):
+        gen_items.append({"label": "Transfers", "href": "/app/transfers", "icon": "transfer"})
+
+    if "STOCK_RETURN_VIEW" in perms:
+        gen_items.append({"label": "Returns", "href": "/app/returns", "icon": "return"})
+    if "ASSET_VIEW" in perms:
+        gen_items.append({"label": "Assets", "href": "/app/assets", "icon": "asset"})
+    if "PETTY_PURCHASE_VIEW" in perms:
+        gen_items.append({"label": "Petty Purchase", "href": "/app/petty-purchases", "icon": "petty"})
+    if "REGISTER_VIEW" in perms:
+        gen_items.append({"label": "Store Registers", "href": "/app/registers", "icon": "register"})
+    if "MASTER_DATA_MANAGE" in perms:
+        gen_items.append({"label": "Store Items", "href": "/app/items", "icon": "items"})
+
+    if gen_items:
+        groups.append({
+            "title": "General Store",
+            "badge": "Store",
+            "badge_color": "general",
+            "links": gen_items,
+        })
+
+    # 3. Paper Warehouse (Press Paper Logistics — including Warehouse Registers)
+    paper_items = []
+    if "PAPER_VIEW" in perms and "PAPER_INDENT_CREATE" not in perms:
+        paper_items.append({"label": "Paper Stock", "href": "/app/paper/stock", "icon": "stock"})
+    elif "PAPER_VIEW" in perms and perms.intersection({"PAPER_ISSUE", "PAPER_RECEIPT_CREATE", "PAPER_TRANSFER_APPROVE", "PAPER_TRANSFER_DIRECTIVE", "PAPER_MASTER_MANAGE"}):
+        paper_items.append({"label": "Paper Stock", "href": "/app/paper/stock", "icon": "stock"})
+
+    if "PAPER_OPENING_CREATE" in perms:
+        paper_items.append({"label": "Paper Opening Stock", "href": "/app/paper/opening-stock", "icon": "opening"})
+    if perms.intersection({"PAPER_RECEIPT_CREATE", "PAPER_RECEIPT_POST", "PAPER_REGISTER_VIEW"}):
+        paper_items.append({"label": "Stationery Receipts", "href": "/app/paper/receipts", "icon": "receipt"})
+    if "PAPER_INDENT_CREATE" in perms and "PAPER_ISSUE" not in perms:
+        paper_items.append({"label": "Request Job Paper", "href": "/app/paper/online-indents/new", "icon": "online"})
+        paper_items.append({"label": "Paper Indents", "href": "/app/paper/indents", "icon": "indent"})
+    elif perms.intersection({"PAPER_VIEW", "PAPER_ISSUE"}):
+        paper_items.append({"label": "Section Issues", "href": "/app/paper/indents", "icon": "indent"})
+
+    if perms.intersection({
+        "PAPER_TRANSFER_CREATE",
+        "PAPER_TRANSFER_DIRECTIVE",
+        "PAPER_TRANSFER_APPROVE",
+        "PAPER_TRANSFER_DISPATCH",
+        "PAPER_TRANSFER_RECEIVE",
+        "PAPER_REGISTER_VIEW",
+    }):
+        paper_items.append({"label": "Inter-Press Transfers", "href": "/app/paper/transfers", "icon": "transfer"})
+    if "PAPER_REGISTER_VIEW" in perms:
+        paper_items.append({"label": "Warehouse Registers", "href": "/app/paper/registers", "icon": "register"})
+
+    if paper_items:
+        groups.append({
+            "title": "Paper Warehouse",
+            "badge": "Paper",
+            "badge_color": "paper",
+            "links": paper_items,
+        })
+
+    # 4. Administration
+    admin_permissions = {"MASTER_DATA_MANAGE", "ORGANIZATION_MANAGE", "USER_MANAGE", "PAPER_MASTER_MANAGE"}
+    if perms.intersection(admin_permissions):
+        adm_items = [{"label": "Admin Overview", "href": "/app/admin", "icon": "admin"}]
+        if "ORGANIZATION_MANAGE" in perms:
+            adm_items.append({"label": "Stores & Warehouses", "href": "/app/admin/stores", "icon": "store"})
+        if "USER_MANAGE" in perms:
+            adm_items.append({"label": "Users & Access", "href": "/app/admin/users", "icon": "users"})
+        if "ORGANIZATION_MANAGE" in perms:
+            adm_items.append({"label": "Organization", "href": "/app/admin/organization", "icon": "org"})
+        if "MASTER_DATA_MANAGE" in perms:
+            adm_items.append({"label": "Master Data", "href": "/app/admin/masters", "icon": "master"})
+        if "PAPER_MASTER_MANAGE" in perms:
+            adm_items.append({"label": "Paper Catalog", "href": "/app/admin/paper-items", "icon": "paper"})
+        if "USER_MANAGE" in perms:
+            adm_items.append({"label": "Roles & Permissions", "href": "/app/admin/roles", "icon": "shield"})
+
+        groups.append({
+            "title": "Administration",
+            "badge": "Admin",
+            "badge_color": "admin",
+            "links": adm_items,
+        })
+
+    return groups
+
+
 def base_context(user: User) -> dict:
     return {
         "user": user,
@@ -184,6 +320,7 @@ def base_context(user: User) -> dict:
         "permissions": permission_codes(user),
         "is_system_admin": is_system_admin(user),
         "menu": visible_menu(user),
+        "nav_groups": grouped_nav(user),
     }
 
 
@@ -194,19 +331,19 @@ async def load_store_context(
     requested_fy_id: int | None,
 ):
     auth = AuthorizationService(session)
-    visible = await auth.get_visible_stores(user.id)
-    stmt = select(Store).where(Store.is_active.is_(True)).order_by(Store.name)
-    if visible is not None:
-        stmt = stmt.where(Store.id.in_(visible)) if visible else stmt.where(Store.id == -1)
-    elif any(role.is_active and role.code == "SECTION_USER" for role in user.roles):
-        # Section users are not storekeepers and therefore normally have no
-        # user_stores assignment. They still need a source store for an online
-        # indent. Expose the Central Store plus their own branch store only.
+    visible = await auth.get_visible_general_stores(user.id)
+    is_section_user = any(role.is_active and role.code == "SECTION_USER" for role in user.roles)
+    stmt = (
+        select(Store)
+        .where(Store.is_active.is_(True), Store.store_type != "PAPER_WAREHOUSE")
+        .order_by(Store.name)
+    )
+    if is_section_user and not visible:
         central = select(Store.id).where(Store.store_type == "CENTRAL", Store.is_active.is_(True))
-        stmt = select(Store).where(
-            Store.is_active.is_(True),
-            (Store.id.in_(central) | (Store.office_id == user.office_id)),
-        ).order_by(Store.name)
+        stmt = stmt.where(Store.id.in_(central) | (Store.office_id == user.office_id))
+    else:
+        stmt = stmt.where(Store.id.in_(visible)) if visible else stmt.where(Store.id == -1)
+
     stores = list((await session.scalars(stmt)).all())
     fys = list((await session.scalars(select(FinancialYear).order_by(FinancialYear.start_date.desc()))).all())
 
@@ -394,11 +531,145 @@ async def dashboard(request: Request, current_user: User | RedirectResponse = De
     if is_system_admin(current_user):
         return RedirectResponse(url="/app/admin", status_code=303)
 
-    user_is_section_user = any(role.is_active and role.code == "SECTION_USER" for role in current_user.roles)
+    active_role_codes = {r.code for r in current_user.roles if r.is_active}
+    perms = permission_codes(current_user)
+    user_is_section_user = "SECTION_USER" in active_role_codes
+    user_is_warehouse_only = (
+        "WAREHOUSEMAN" in active_role_codes
+        and "STOCK_VIEW" not in perms
+        and "BRANCH_HEAD" not in active_role_codes
+    )
+
+    if user_is_warehouse_only:
+        from app.paper_store.models.indent_issue import PaperIndent
+        from app.paper_store.models.transfer import PaperTransfer
+        from app.paper_store.services.stock import PaperStockService
+        from app.paper_store.web.routes import load_paper_store_context
+
+        paper_stores, fys, selected_wh, selected_fy = await load_paper_store_context(
+            current_user, session, store_id, financial_year_id
+        )
+        paper_rows = []
+        sheet_specs = 0
+        reel_specs = 0
+        total_reel_kg = Decimal("0")
+        pending_transfers = 0
+        pending_indent_count = 0
+        wh_queues: list[dict] = []
+
+        if selected_wh and selected_fy:
+            paper_rows = await PaperStockService(session).current_stock(selected_wh.id, selected_fy.id)
+            for r in paper_rows:
+                if r["item"].form_type == "REEL":
+                    reel_specs += 1
+                    total_reel_kg += Decimal(r["balance_weight_kg"])
+                else:
+                    sheet_specs += 1
+
+            pending_indents_q = list(
+                (
+                    await session.scalars(
+                        select(PaperIndent)
+                        .options(selectinload(PaperIndent.section))
+                        .where(
+                            PaperIndent.store_id == selected_wh.id,
+                            PaperIndent.status.in_(["SUBMITTED", "APPROVED"]),
+                        )
+                        .order_by(PaperIndent.indent_date.desc(), PaperIndent.id.desc())
+                        .limit(6)
+                    )
+                ).all()
+            )
+            pending_indent_count = int(
+                (
+                    await session.scalar(
+                        select(func.count(PaperIndent.id)).where(
+                            PaperIndent.store_id == selected_wh.id,
+                            PaperIndent.status.in_(["SUBMITTED", "APPROVED"]),
+                        )
+                    )
+                )
+                or 0
+            )
+            for pi in pending_indents_q:
+                wh_queues.append({
+                    "title": f"Paper Indent {pi.indent_no}",
+                    "desc": f"{pi.section.name if pi.section else 'Section'} · Job: {pi.job_no or 'General'}",
+                    "date": str(pi.indent_date),
+                    "badge": "Issue Paper",
+                    "badge_color": "paper",
+                    "url": f"/app/paper/indents/{pi.id}",
+                })
+
+            xf_q = list(
+                (
+                    await session.scalars(
+                        select(PaperTransfer)
+                        .where(
+                            (
+                                (PaperTransfer.source_store_id == selected_wh.id)
+                                & PaperTransfer.status.in_(["BRANCH_APPROVED", "DIRECTORATE_DIRECTIVE"])
+                            )
+                            | (
+                                (PaperTransfer.destination_store_id == selected_wh.id)
+                                & (PaperTransfer.status == "DISPATCHED")
+                            )
+                        )
+                        .order_by(PaperTransfer.transfer_date.desc(), PaperTransfer.id.desc())
+                        .limit(6)
+                    )
+                ).all()
+            )
+            pending_transfers = int(
+                (
+                    await session.scalar(
+                        select(func.count(PaperTransfer.id)).where(
+                            (
+                                (PaperTransfer.source_store_id == selected_wh.id)
+                                & PaperTransfer.status.in_(["BRANCH_APPROVED", "DIRECTORATE_DIRECTIVE"])
+                            )
+                            | (
+                                (PaperTransfer.destination_store_id == selected_wh.id)
+                                & (PaperTransfer.status == "DISPATCHED")
+                            )
+                        )
+                    )
+                )
+                or 0
+            )
+            for xf in xf_q:
+                is_out = xf.source_store_id == selected_wh.id
+                wh_queues.append({
+                    "title": f"Transfer {xf.transfer_no}",
+                    "desc": f"{'Dispatch to ' + (xf.destination_store.name if xf.destination_store else 'Press') if is_out else 'Receive from ' + (xf.source_store.name if xf.source_store else 'Press')}",
+                    "date": str(xf.transfer_date),
+                    "badge": "Dispatch" if is_out else "Receive Inward",
+                    "badge_color": "warn" if is_out else "info",
+                    "url": f"/app/paper/transfers/{xf.id}",
+                })
+
+        return render(
+            request,
+            "dashboard.html",
+            current_user,
+            is_section_dashboard=False,
+            is_warehouse_dashboard=True,
+            paper_stores=paper_stores,
+            financial_years=fys,
+            selected_store=selected_wh,
+            selected_fy=selected_fy,
+            total_paper_specs=len(paper_rows),
+            sheet_specs=sheet_specs,
+            reel_specs=reel_specs,
+            total_reel_kg=total_reel_kg,
+            pending_transfers=pending_transfers,
+            pending_indent_count=pending_indent_count,
+            wh_queues=wh_queues,
+        )
+
     stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
 
     if user_is_section_user:
-        # Section user stock is not monitored. Display section indent request workflow instead.
         user_office = await session.get(Office, current_user.office_id) if current_user.office_id else (await session.get(Office, selected_store.office_id) if selected_store else None)
         user_section = await session.get(Section, current_user.section_id) if current_user.section_id else None
 
@@ -410,7 +681,7 @@ async def dashboard(request: Request, current_user: User | RedirectResponse = De
         else:
             indent_stmt = indent_stmt.where(Indent.created_by == current_user.id)
 
-        recent_indents = list((await session.scalars(indent_stmt.order_by(Indent.indent_date.desc(), Indent.id.desc()).limit(8))).all())
+        recent_indents = list((await session.scalars(indent_stmt.order_by(Indent.indent_date.desc(), Indent.id.desc()).limit(6))).all())
 
         base_filter = indent_stmt.whereclause
         total_indents = int((await session.scalar(select(func.count(Indent.id)).where(base_filter))) or 0)
@@ -418,11 +689,27 @@ async def dashboard(request: Request, current_user: User | RedirectResponse = De
         completed_indents = int((await session.scalar(select(func.count(Indent.id)).where(base_filter, Indent.status.in_(["COMPLETED", "FINALIZED"])))) or 0)
         item_count = int((await session.scalar(select(func.count(Item.id)).where(Item.is_active.is_(True)))) or 0)
 
+        from app.paper_store.models.indent_issue import PaperIndent
+        paper_indent_stmt = select(PaperIndent).options(selectinload(PaperIndent.lines), selectinload(PaperIndent.store))
+        if current_user.section_id:
+            paper_indent_stmt = paper_indent_stmt.where(PaperIndent.section_id == current_user.section_id)
+        else:
+            paper_indent_stmt = paper_indent_stmt.where(PaperIndent.created_by == current_user.id)
+        recent_paper_indents = list((await session.scalars(paper_indent_stmt.order_by(PaperIndent.indent_date.desc(), PaperIndent.id.desc()).limit(6))).all())
+        p_filter = paper_indent_stmt.whereclause
+        paper_total_indents = int((await session.scalar(select(func.count(PaperIndent.id)).where(p_filter))) or 0)
+        paper_pending_indents = int((await session.scalar(select(func.count(PaperIndent.id)).where(p_filter, PaperIndent.status.in_(["SUBMITTED", "APPROVED", "RECORDED"])))) or 0)
+        paper_completed_indents = int((await session.scalar(select(func.count(PaperIndent.id)).where(p_filter, PaperIndent.status == "FINALIZED"))) or 0)
+
+        paper_wh_ids = await AuthorizationService(session).get_visible_paper_warehouses(current_user.id)
+
         return render(
             request,
             "dashboard.html",
             current_user,
             is_section_dashboard=True,
+            is_warehouse_dashboard=False,
+            has_paper_warehouse=bool(paper_wh_ids),
             stores=stores,
             financial_years=fys,
             selected_store=selected_store,
@@ -430,34 +717,309 @@ async def dashboard(request: Request, current_user: User | RedirectResponse = De
             user_office=user_office,
             user_section=user_section,
             recent_indents=recent_indents,
-            total_indents=total_indents,
-            pending_indents=pending_indents,
-            completed_indents=completed_indents,
+            recent_paper_indents=recent_paper_indents,
+            total_indents=total_indents + paper_total_indents,
+            pending_indents=pending_indents + paper_pending_indents,
+            completed_indents=completed_indents + paper_completed_indents,
             item_count=item_count,
         )
 
-    # Standard Storekeeper / Store Controller Dashboard
-    stock_rows, total_units = [], Decimal("0")
+    # Standard General Storekeeper / Branch Head / Directorate Dashboard
+    active_stock_count, total_units = 0, Decimal("0")
     if selected_store and selected_fy:
         await AuthorizationService(session).require_store_visibility(current_user.id, selected_store.id)
         rows = await StockService(session).current_stock(selected_store.id, selected_fy.id, None)
-        stock_rows = rows[:8]
+        active_stock_count = len(rows)
         total_units = sum((Decimal(str(row.balance or 0)) for row in rows), Decimal("0"))
     item_count = await session.scalar(select(func.count(Item.id)).where(Item.is_active.is_(True)))
     visible_asset_count = 0
     if selected_store:
         visible_asset_count = int((await session.scalar(select(func.count(Asset.id)).where(Asset.current_store_id == selected_store.id))) or 0)
+
+    is_branch_head = "BRANCH_HEAD" in active_role_codes
+    is_deputy = "DEPUTY_SUPDT_STORES" in active_role_codes
+    pending_approvals: list[dict] = []
+    op_queues: list[dict] = []
+    paper_summary = None
+
+    from app.paper_store.models.transfer import PaperTransfer
+    from app.paper_store.services.stock import PaperStockService
+
+    if is_branch_head and current_user.office_id:
+        branch_store_ids = select(Store.id).where(Store.office_id == current_user.office_id)
+        branch_paper_xfers = list((await session.scalars(
+            select(PaperTransfer)
+            .where(PaperTransfer.source_store_id.in_(branch_store_ids), PaperTransfer.status == "SUBMITTED")
+            .order_by(PaperTransfer.created_at.desc())
+            .limit(4)
+        )).all())
+        for xf in branch_paper_xfers:
+            pending_approvals.append({
+                "title": f"Paper Transfer {xf.transfer_no}",
+                "desc": f"To: {xf.destination_store.name if xf.destination_store else 'Warehouse'}",
+                "date": xf.transfer_date,
+                "url": f"/app/paper/transfers/{xf.id}",
+                "badge": "Paper Approval",
+                "badge_color": "paper",
+            })
+
+        branch_reqs = list((await session.scalars(
+            select(CentralStoreRequisition)
+            .where(CentralStoreRequisition.requesting_office_id == current_user.office_id, CentralStoreRequisition.status == "SUBMITTED")
+            .order_by(CentralStoreRequisition.created_at.desc())
+            .limit(4)
+        )).all())
+        for rq in branch_reqs:
+            pending_approvals.append({
+                "title": f"Requisition {rq.requisition_no}",
+                "desc": "Branch Head approval needed",
+                "date": rq.requisition_date,
+                "url": f"/app/requisitions/{rq.id}",
+                "badge": "Requisition",
+                "badge_color": "general",
+            })
+
+        branch_xfers = list((await session.scalars(
+            select(StockTransfer)
+            .where(StockTransfer.source_store_id.in_(branch_store_ids), StockTransfer.status == "SUBMITTED")
+            .order_by(StockTransfer.created_at.desc())
+            .limit(4)
+        )).all())
+        for xf in branch_xfers:
+            pending_approvals.append({
+                "title": f"Stock Transfer {xf.transfer_no}",
+                "desc": f"Mode: {xf.transfer_mode} · Awaiting Branch approval",
+                "date": xf.transfer_date,
+                "url": f"/app/transfers/{xf.id}",
+                "badge": "Transfer",
+                "badge_color": "general",
+            })
+
+        branch_petties = list((await session.scalars(
+            select(PettyPurchase)
+            .where(PettyPurchase.store_id.in_(branch_store_ids), PettyPurchase.status == "OPEN")
+            .order_by(PettyPurchase.created_at.desc())
+            .limit(4)
+        )).all())
+        for pt in branch_petties:
+            pending_approvals.append({
+                "title": f"Petty Purchase {pt.petty_purchase_no}",
+                "desc": f"Vendor: {pt.vendor_name or 'Local'}",
+                "date": pt.purchase_date,
+                "url": f"/app/petty-purchases?store_id={pt.store_id}",
+                "badge": "Verify Petty Purchase",
+                "badge_color": "warn",
+            })
+
+        branch_receipts = list((await session.scalars(
+            select(Receipt)
+            .where(Receipt.store_id.in_(branch_store_ids), Receipt.status == "OPEN")
+            .order_by(Receipt.created_at.desc())
+            .limit(3)
+        )).all())
+        for rc in branch_receipts:
+            pending_approvals.append({
+                "title": f"Receipt {rc.receipt_no}",
+                "desc": f"Supplier: {rc.supplier_name or 'External'}",
+                "date": rc.receipt_date,
+                "url": f"/app/receipts?store_id={rc.store_id}",
+                "badge": "Verify Receipt",
+                "badge_color": "info",
+            })
+
+        branch_returns = list((await session.scalars(
+            select(StockReturn)
+            .where(StockReturn.store_id.in_(branch_store_ids), StockReturn.status == "OPEN")
+            .order_by(StockReturn.created_at.desc())
+            .limit(3)
+        )).all())
+        for rt in branch_returns:
+            pending_approvals.append({
+                "title": f"Stock Return {rt.return_no}",
+                "desc": f"Condition: {rt.condition}",
+                "date": rt.return_date,
+                "url": f"/app/returns?store_id={rt.store_id}",
+                "badge": "Return Review",
+                "badge_color": "general",
+            })
+
+        wh = await session.scalar(
+            select(Store).where(Store.office_id == current_user.office_id, Store.store_type == "PAPER_WAREHOUSE", Store.is_active.is_(True)).limit(1)
+        )
+        if wh and selected_fy:
+            p_rows = await PaperStockService(session).current_stock(wh.id, selected_fy.id)
+            p_sheet_cnt = sum(1 for r in p_rows if r["item"].form_type == "SHEET")
+            p_reel_kg = sum((Decimal(r["balance_weight_kg"]) for r in p_rows if r["item"].form_type == "REEL"), Decimal("0"))
+            paper_summary = {
+                "warehouse": wh,
+                "active_count": len(p_rows),
+                "sheet_specs": p_sheet_cnt,
+                "reel_kg": p_reel_kg,
+            }
+
+    elif is_deputy:
+        cent_reqs = list((await session.scalars(
+            select(CentralStoreRequisition)
+            .where(CentralStoreRequisition.status == "BRANCH_APPROVED")
+            .order_by(CentralStoreRequisition.created_at.desc())
+            .limit(5)
+        )).all())
+        for rq in cent_reqs:
+            pending_approvals.append({
+                "title": f"Requisition {rq.requisition_no}",
+                "desc": "Branch approved · Awaiting Central authorization",
+                "date": rq.requisition_date,
+                "url": f"/app/requisitions/{rq.id}",
+                "badge": "Central Authorization",
+                "badge_color": "general",
+            })
+
+        cent_xfers = list((await session.scalars(
+            select(StockTransfer)
+            .where(StockTransfer.status.in_(["BRANCH_APPROVED", "DIRECTORATE_APPROVED"]))
+            .order_by(StockTransfer.created_at.desc())
+            .limit(5)
+        )).all())
+        for xf in cent_xfers:
+            pending_approvals.append({
+                "title": f"Stock Transfer {xf.transfer_no}",
+                "desc": f"Status: {xf.status} · Supply authorization",
+                "date": xf.transfer_date,
+                "url": f"/app/transfers/{xf.id}",
+                "badge": "Transfer Authorization",
+                "badge_color": "info",
+            })
+
+        cent_petties = list((await session.scalars(
+            select(PettyPurchase)
+            .where(PettyPurchase.status == "OPEN")
+            .order_by(PettyPurchase.created_at.desc())
+            .limit(4)
+        )).all())
+        for pt in cent_petties:
+            pending_approvals.append({
+                "title": f"Petty Purchase {pt.petty_purchase_no}",
+                "desc": f"Vendor: {pt.vendor_name or 'Local'}",
+                "date": pt.purchase_date,
+                "url": f"/app/petty-purchases?store_id={pt.store_id}",
+                "badge": "Verify Purchase",
+                "badge_color": "warn",
+            })
+
+        cent_receipts = list((await session.scalars(
+            select(Receipt)
+            .where(Receipt.status == "OPEN")
+            .order_by(Receipt.created_at.desc())
+            .limit(3)
+        )).all())
+        for rc in cent_receipts:
+            pending_approvals.append({
+                "title": f"Receipt {rc.receipt_no}",
+                "desc": f"Supplier: {rc.supplier_name or 'External'}",
+                "date": rc.receipt_date,
+                "url": f"/app/receipts?store_id={rc.store_id}",
+                "badge": "Verify Receipt",
+                "badge_color": "info",
+            })
+
+    # Storekeeper / General Store Action Queue for selected store
+    if selected_store:
+        open_indents = list((await session.scalars(
+            select(Indent)
+            .options(selectinload(Indent.office), selectinload(Indent.section))
+            .where(
+                Indent.store_id == selected_store.id,
+                Indent.request_source == "ONLINE",
+                Indent.status.in_(["SUBMITTED", "APPROVED", "RECORDED"]),
+            )
+            .order_by(Indent.indent_date.desc(), Indent.id.desc())
+            .limit(5)
+        )).all())
+        for ind in open_indents:
+            op_queues.append({
+                "title": f"Online Indent {ind.indent_no}",
+                "desc": f"{ind.office.name if ind.office else ''}{' / ' + ind.section.name if ind.section else ''}",
+                "date": str(ind.indent_date),
+                "badge": ind.status,
+                "badge_color": "info",
+                "url": f"/app/indents/{ind.id}",
+            })
+
+        pending_store_xfers = list((await session.scalars(
+            select(StockTransfer)
+            .where(
+                (
+                    (StockTransfer.source_store_id == selected_store.id)
+                    & StockTransfer.status.in_(["SUPPLY_AUTHORIZED", "READY_FOR_DISPATCH", "APPROVED"])
+                )
+                | (
+                    (StockTransfer.destination_store_id == selected_store.id)
+                    & (StockTransfer.status == "DISPATCHED")
+                )
+            )
+            .order_by(StockTransfer.transfer_date.desc(), StockTransfer.id.desc())
+            .limit(5)
+        )).all())
+        for xf in pending_store_xfers:
+            is_out = xf.source_store_id == selected_store.id
+            op_queues.append({
+                "title": f"Stock Transfer {xf.transfer_no}",
+                "desc": "Authorized for dispatch" if is_out else "In transit — confirm receipt",
+                "date": str(xf.transfer_date),
+                "badge": "Dispatch" if is_out else "Receive",
+                "badge_color": "warn" if is_out else "ok",
+                "url": f"/app/transfers/{xf.id}",
+            })
+
+        if selected_store.store_type == "CENTRAL_STORE" and "STOCK_TRANSFER_DISPATCH" in active_perms:
+            approved_reqs = list((await session.scalars(
+                select(CentralStoreRequisition)
+                .where(CentralStoreRequisition.status.in_(["CENTRAL_APPROVED", "PARTIALLY_DISPATCHED"]))
+                .order_by(CentralStoreRequisition.requisition_date.desc(), CentralStoreRequisition.id.desc())
+                .limit(4)
+            )).all())
+            for rq in approved_reqs:
+                op_queues.append({
+                    "title": f"Requisition {rq.requisition_no}",
+                    "desc": f"Status: {rq.status} · Ready for Central dispatch",
+                    "date": str(rq.requisition_date),
+                    "badge": "Dispatch Req",
+                    "badge_color": "general",
+                    "url": f"/app/requisitions/{rq.id}",
+                })
+
+        verified_petties = list((await session.scalars(
+            select(PettyPurchase)
+            .where(PettyPurchase.store_id == selected_store.id, PettyPurchase.status == "VERIFIED")
+            .order_by(PettyPurchase.purchase_date.desc(), PettyPurchase.id.desc())
+            .limit(4)
+        )).all())
+        for pt in verified_petties:
+            op_queues.append({
+                "title": f"Petty Purchase {pt.petty_purchase_no}",
+                "desc": f"Verified — ready to post IN ({pt.vendor_name or 'Local'})",
+                "date": str(pt.purchase_date),
+                "badge": "Post Stock",
+                "badge_color": "ok",
+                "url": f"/app/petty-purchases?store_id={pt.store_id}",
+            })
+
     return render(
         request,
         "dashboard.html",
         current_user,
         is_section_dashboard=False,
+        is_warehouse_dashboard=False,
+        is_branch_head=is_branch_head,
+        is_deputy=is_deputy,
+        pending_approvals=pending_approvals,
+        op_queues=op_queues,
+        paper_summary=paper_summary,
         stores=stores,
         financial_years=fys,
         selected_store=selected_store,
         selected_fy=selected_fy,
-        stock_rows=stock_rows,
-        stock_count=len(stock_rows),
+        stock_count=active_stock_count,
         total_units=total_units,
         item_count=int(item_count or 0),
         asset_count=visible_asset_count,
@@ -1902,6 +2464,17 @@ async def my_activity_page(request: Request, current_user: User | RedirectRespon
     await add_rows(StockTransfer, "Transfer", "transfer_no")
     await add_rows(Receipt, "Receipt", "receipt_no")
 
+    from app.paper_store.models.receipt import PaperReceipt
+    from app.paper_store.models.indent_issue import PaperIndent, PaperIssue
+    from app.paper_store.models.transfer import PaperTransfer
+    from app.paper_store.models.stock import PaperOpeningStock
+
+    await add_rows(PaperOpeningStock, "Paper Opening", "opening_no")
+    await add_rows(PaperReceipt, "Paper Receipt", "receipt_no")
+    await add_rows(PaperIndent, "Paper Indent", "indent_no")
+    await add_rows(PaperIssue, "Paper Issue", "issue_no")
+    await add_rows(PaperTransfer, "Paper Transfer", "transfer_no")
+
     rows.sort(key=lambda x: (x["date"] is not None, x["date"]), reverse=True)
     return render(request, "my_activity.html", current_user, activities=rows[:200])
 
@@ -1995,10 +2568,37 @@ def page_window(total: int, page: int, page_size: int) -> tuple[int, int, int, i
     return page, page_size, pages, (page - 1) * page_size
 
 
-def pdf_response(title: str, columns: list[tuple[str, str]], rows: list[dict], subtitle: str = ""):
-    pdf = make_register_pdf(title, columns, rows, subtitle)
+def pdf_response(
+    title: str,
+    columns: list[tuple[str, str]],
+    rows: list[dict],
+    subtitle: str = "",
+    *,
+    paper_size: str = "auto",
+    domain: str = "general",
+    meta_items: list[tuple[str, str]] | None = None,
+    generated_by: str | None = None,
+    search_term: str | None = None,
+    inline: bool = False,
+):
+    pdf = make_register_pdf(
+        title,
+        columns,
+        rows,
+        subtitle,
+        paper_size=paper_size,
+        domain=domain,
+        meta_items=meta_items,
+        generated_by=generated_by,
+        search_term=search_term,
+    )
     filename = title.lower().replace(" ", "_").replace("/", "-") + ".pdf"
-    return StreamingResponse(pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    disp = "inline" if inline else "attachment"
+    return StreamingResponse(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'{disp}; filename="{filename}"'},
+    )
 
 
 @router.get("/app/registers", include_in_schema=False)
@@ -2079,18 +2679,75 @@ async def outward_pass_page(issue_id: int, request: Request, current_user: User 
 
 
 @router.get("/app/outward-pass/{issue_id}.pdf", include_in_schema=False)
-async def outward_pass_pdf(issue_id: int, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
-    if isinstance(current_user, RedirectResponse): return current_user
+async def outward_pass_pdf(
+    issue_id: int,
+    paper_size: str = "auto",
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
     await require_view_permission(session, current_user.id, "REGISTER_VIEW")
-    issue = await session.scalar(select(Issue).options(selectinload(Issue.lines).selectinload(IssueLine.item), selectinload(Issue.lines).selectinload(IssueLine.unit)).where(Issue.id == issue_id))
-    if issue is None: raise HTTPException(404,"Issue not found")
+    issue = await session.scalar(
+        select(Issue)
+        .options(selectinload(Issue.lines).selectinload(IssueLine.item), selectinload(Issue.lines).selectinload(IssueLine.unit))
+        .where(Issue.id == issue_id)
+    )
+    if issue is None:
+        raise HTTPException(404, "Issue not found")
     await AuthorizationService(session).require_store_visibility(current_user.id, issue.source_store_id)
-    if issue.status != "FINALIZED": raise HTTPException(409,"Only finalized issues can generate an outward pass")
-    store=await session.get(Store,issue.source_store_id); office=await session.get(Office,issue.destination_office_id); section=await session.get(Section,issue.destination_section_id) if issue.destination_section_id else None
-    rows=[{"item":f"{line.item.code} — {line.item.name}" if line.item else line.item_id,"unit":line.unit.code if line.unit else line.unit_id,"quantity":line.quantity} for line in issue.lines]
-    cols=[("item","Item"),("unit","Unit"),("quantity","Quantity")]
-    subtitle=f"Pass reference: {issue.issue_no} | Date: {issue.issue_date} | From: {store.name if store else issue.source_store_id} | To: {office.name if office else issue.destination_office_id}{(' / '+section.name) if section else ''}"
-    return pdf_response("Outward Pass",cols,rows,subtitle)
+    if issue.status != "FINALIZED":
+        raise HTTPException(409, "Only finalized issues can generate an outward pass")
+    store = await session.get(Store, issue.source_store_id)
+    office = await session.get(Office, issue.destination_office_id)
+    section = await session.get(Section, issue.destination_section_id) if issue.destination_section_id else None
+    fy = await session.get(FinancialYear, issue.financial_year_id) if issue.financial_year_id else None
+    total_qty = sum((Decimal(str(line.quantity or 0)) for line in issue.lines), Decimal("0"))
+    rows = [
+        {
+            "item_code": line.item.code if line.item else line.item_id,
+            "item_name": line.item.name if line.item else f"Item #{line.item_id}",
+            "unit": line.unit.code if line.unit else line.unit_id,
+            "quantity": f"{line.quantity:.3f}",
+            "remarks": line.remarks or "—",
+        }
+        for line in issue.lines
+    ]
+    cols = [("item_code", "Code"), ("item_name", "Item Description"), ("unit", "Unit"), ("quantity", "Issued Qty"), ("remarks", "Remarks")]
+    meta_items = [
+        ("Issue / Pass No", issue.issue_no),
+        ("Issue Date", str(issue.issue_date)),
+        ("Financial Year", fy.year_name if fy else "—"),
+        ("Issuing Store", store.name if store else str(issue.source_store_id)),
+        ("Destination Office", office.name if office else str(issue.destination_office_id)),
+        ("Destination Section", section.name if section else "All / Office General"),
+    ]
+    pdf = make_voucher_pdf(
+        "Outward Pass",
+        cols,
+        rows,
+        subtitle=f"Finalized Stock Issue & Material Gate Release",
+        ref_no=issue.issue_no,
+        doc_date=str(issue.issue_date),
+        meta_items=meta_items,
+        totals_row={"item_code": "", "item_name": "Total Issued Quantity", "unit": "", "quantity": f"{total_qty:.3f}", "remarks": ""},
+        notes=issue.remarks,
+        signatures=[
+            {"role": "Prepared / Issued By", "label": current_user.full_name},
+            {"role": "Verified By", "label": "Storekeeper / Officer-in-Charge"},
+            {"role": "Received By", "label": section.name if section else (office.name if office else "Recipient")},
+        ],
+        paper_size=paper_size,
+        domain="general",
+        subsystem_label="General Store Outward Material Pass",
+        generated_by=current_user.full_name,
+    )
+    safe_no = issue.issue_no.lower().replace("/", "_").replace("-", "_")
+    return StreamingResponse(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="outward_pass_{safe_no}.pdf"'},
+    )
 
 
 @router.get("/app/transfers/{transfer_id}/gate-pass", include_in_schema=False)
@@ -2180,6 +2837,7 @@ async def update_transfer_gate_pass_web(
 @router.get("/app/transfers/{transfer_id}/gate-pass.pdf", include_in_schema=False)
 async def transfer_gate_pass_pdf_download(
     transfer_id: int,
+    paper_size: str = "auto",
     current_user: User | RedirectResponse = Depends(get_web_current_user),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -2221,10 +2879,12 @@ async def transfer_gate_pass_pdf_download(
         "requisition_no": requisition.requisition_no if requisition else "—",
         "requisition_date": str(requisition.requisition_date) if requisition else "—",
         "source_store": source_store.name if source_store else "Central Store",
+        "source_office": "Printing Department",
         "destination_store": dest_store.name if dest_store else "—",
         "destination_office": dest_office.name if dest_office else "—",
         "vehicle_no": transfer.vehicle_no,
         "received_by_name": transfer.received_by_name,
+        "status": transfer.status,
         "fy_name": fy.year_name if fy else "—",
         "dispatched_by_name": dispatched_user.full_name if dispatched_user else "Central Storekeeper",
     }
@@ -2243,7 +2903,13 @@ async def transfer_gate_pass_pdf_download(
             "remarks": line.remarks,
             "asset_numbers": asset_nums,
         })
-    pdf_buffer = make_transfer_gate_pass_pdf(info, items)
+    pdf_buffer = make_transfer_gate_pass_pdf(
+        info,
+        items,
+        paper_size=paper_size,
+        domain="general",
+        generated_by=current_user.full_name,
+    )
     safe_no = transfer.transfer_no.lower().replace("/", "_").replace("-", "_")
     filename = f"gate_pass_{safe_no}.pdf"
     return StreamingResponse(
@@ -2275,59 +2941,147 @@ async def requisition_gate_pass_page(
     return RedirectResponse(f"/app/transfers/{transfer.id}/gate-pass", status_code=303)
 
 
+async def _asset_register_pdf_rows(session: AsyncSession, assets: list[Asset]) -> list[dict]:
+    store_ids = {a.current_store_id for a in assets if a.current_store_id}
+    office_ids = {a.current_office_id for a in assets if a.current_office_id}
+    section_ids = {a.current_section_id for a in assets if a.current_section_id}
+    store_map = dict((await session.execute(select(Store.id, Store.name).where(Store.id.in_(store_ids)))).all()) if store_ids else {}
+    office_map = dict((await session.execute(select(Office.id, Office.name).where(Office.id.in_(office_ids)))).all()) if office_ids else {}
+    section_map = dict((await session.execute(select(Section.id, Section.name).where(Section.id.in_(section_ids)))).all()) if section_ids else {}
+    return [
+        {
+            "asset_no": a.asset_no,
+            "item": f"{a.item.code} — {a.item.name}" if a.item else str(a.item_id),
+            "serial": a.serial_no or "—",
+            "status": a.status,
+            "store": store_map.get(a.current_store_id, str(a.current_store_id or "—")),
+            "office": office_map.get(a.current_office_id, str(a.current_office_id or "—")),
+            "section": section_map.get(a.current_section_id, str(a.current_section_id or "—")),
+        }
+        for a in assets
+    ]
+
+
+def _register_subtitle(selected_store: Store | None, selected_fy: FinancialYear | None) -> str:
+    parts = [selected_store.name if selected_store else "All Permitted Stores"]
+    if selected_fy:
+        parts.append(f"FY {selected_fy.year_name}")
+    return " | ".join(parts)
+
+
 @router.get("/app/registers/item-stock.pdf", include_in_schema=False)
-async def item_stock_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+async def item_stock_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, paper_size: str = "auto", session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
     await require_view_permission(session, current_user.id, "REGISTER_VIEW")
-    stores,fys,selected_store,selected_fy=await load_store_context(current_user,session,store_id,financial_year_id)
-    if not selected_store or not selected_fy: raise HTTPException(422,"Store and financial year are required")
+    stores, fys, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
+    if not selected_store or not selected_fy:
+        raise HTTPException(422, "Store and financial year are required")
     await AuthorizationService(session).require_store_visibility(current_user.id, selected_store.id)
-    raw=await StockService(session).all_item_balances(selected_store.id,selected_fy.id,search)
-    rows=[dict(r._mapping) for r in raw]
-    cols=[("item_code","Code"),("item_name","Item"),("unit_code","Unit"),("balance","Balance")]
-    return pdf_response("Item Stock Register",cols,rows,f"{selected_store.name} | FY {selected_fy.year_name}")
+    raw = await StockService(session).all_item_balances(selected_store.id, selected_fy.id, search)
+    rows = [dict(r._mapping) for r in raw]
+    cols = [("item_code", "Code"), ("item_name", "Item"), ("unit_code", "Unit"), ("balance", "Balance")]
+    return pdf_response(
+        "Item Stock Register",
+        cols,
+        rows,
+        _register_subtitle(selected_store, selected_fy),
+        paper_size=paper_size,
+        meta_items=[("Store", selected_store.name), ("Financial Year", selected_fy.year_name)],
+        generated_by=current_user.full_name,
+        search_term=search,
+    )
 
 
 @router.get("/app/registers/issues.pdf", include_in_schema=False)
-async def issue_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+async def issue_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, paper_size: str = "auto", session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    rows=await RegisterService(session).issue_register(current_user.id,store_id,financial_year_id,search=search)
-    cols=[("issue_no","Issue"),("issue_date","Date"),("store_name","Store"),("office_name","Destination Office"),("section_name","Section"),("indent_no","Indent"),("status","Status")]
-    return pdf_response("Issue Register",cols,rows)
+    _, _, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
+    rows = await RegisterService(session).issue_register(current_user.id, store_id, financial_year_id, search=search)
+    cols = [("issue_no", "Issue"), ("issue_date", "Date"), ("store_name", "Store"), ("office_name", "Destination Office"), ("section_name", "Section"), ("indent_no", "Indent"), ("status", "Status")]
+    return pdf_response(
+        "Issue Register",
+        cols,
+        rows,
+        _register_subtitle(selected_store, selected_fy),
+        paper_size=paper_size,
+        meta_items=[("Store Scope", selected_store.name if selected_store else "All Permitted Stores"), ("Financial Year", selected_fy.year_name if selected_fy else "All FYs")],
+        generated_by=current_user.full_name,
+        search_term=search,
+    )
 
 
 @router.get("/app/registers/distribution.pdf", include_in_schema=False)
-async def distribution_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+async def distribution_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, paper_size: str = "auto", session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    rows=await RegisterService(session).distribution_register(current_user.id,store_id,financial_year_id,search=search)
-    cols=[("issue_date","Date"),("issue_no","Issue"),("office_name","Destination"),("section_name","Section"),("item_code","Item Code"),("item_name","Item"),("quantity","Quantity")]
-    return pdf_response("Distribution Register",cols,rows)
+    _, _, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
+    rows = await RegisterService(session).distribution_register(current_user.id, store_id, financial_year_id, search=search)
+    cols = [("issue_date", "Date"), ("issue_no", "Issue"), ("indent_no", "Indent"), ("office_name", "Destination"), ("section_name", "Section"), ("item_code", "Item Code"), ("item_name", "Item"), ("unit_code", "Unit"), ("quantity", "Quantity")]
+    return pdf_response(
+        "Distribution Register",
+        cols,
+        rows,
+        _register_subtitle(selected_store, selected_fy),
+        paper_size=paper_size,
+        meta_items=[("Store Scope", selected_store.name if selected_store else "All Permitted Stores"), ("Financial Year", selected_fy.year_name if selected_fy else "All FYs")],
+        generated_by=current_user.full_name,
+        search_term=search,
+    )
 
 
 @router.get("/app/registers/transactions.pdf", include_in_schema=False)
-async def transaction_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+async def transaction_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, financial_year_id: int | None = None, search: str | None = None, paper_size: str = "auto", session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    rows=await RegisterService(session).transaction_register(current_user.id,store_id,financial_year_id,search=search)
-    cols=[("movement_date","Date"),("movement_type","Movement"),("store_name","Store"),("item_code","Item Code"),("item_name","Item"),("quantity_in","In"),("quantity_out","Out"),("reference_no","Document")]
-    return pdf_response("Transaction Register",cols,rows)
+    _, _, selected_store, selected_fy = await load_store_context(current_user, session, store_id, financial_year_id)
+    rows = await RegisterService(session).transaction_register(current_user.id, store_id, financial_year_id, search=search)
+    cols = [("movement_date", "Date"), ("movement_type", "Movement"), ("store_name", "Store"), ("item_code", "Item Code"), ("item_name", "Item"), ("quantity_in", "In"), ("quantity_out", "Out"), ("reference_no", "Document")]
+    return pdf_response(
+        "Transaction Register",
+        cols,
+        rows,
+        _register_subtitle(selected_store, selected_fy),
+        paper_size=paper_size,
+        meta_items=[("Store Scope", selected_store.name if selected_store else "All Permitted Stores"), ("Financial Year", selected_fy.year_name if selected_fy else "All FYs")],
+        generated_by=current_user.full_name,
+        search_term=search,
+    )
 
 
 @router.get("/app/registers/computers.pdf", include_in_schema=False)
-async def computer_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+async def computer_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, search: str | None = None, paper_size: str = "auto", session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    assets=await RegisterService(session).computer_register(current_user.id,store_id,search=search)
-    rows=[{"asset_no":a.asset_no,"item":f"{a.item.code} — {a.item.name}" if a.item else a.item_id,"serial":a.serial_no or "","status":a.status,"store":a.current_store_id or "","office":a.current_office_id or "","section":a.current_section_id or ""} for a in assets]
-    cols=[("asset_no","Asset No"),("item","Item"),("serial","Serial"),("status","Status"),("store","Store"),("office","Office"),("section","Section")]
-    return pdf_response("Computer Register",cols,rows)
+    _, _, selected_store, _ = await load_store_context(current_user, session, store_id, None)
+    assets = await RegisterService(session).computer_register(current_user.id, store_id, search=search)
+    rows = await _asset_register_pdf_rows(session, assets)
+    cols = [("asset_no", "Asset No"), ("item", "Item"), ("serial", "Serial"), ("status", "Status"), ("store", "Store"), ("office", "Office"), ("section", "Section")]
+    return pdf_response(
+        "Computer Register",
+        cols,
+        rows,
+        selected_store.name if selected_store else "All Permitted Stores",
+        paper_size=paper_size,
+        meta_items=[("Store Scope", selected_store.name if selected_store else "All Permitted Stores")],
+        generated_by=current_user.full_name,
+        search_term=search,
+    )
 
 
 @router.get("/app/registers/e-waste.pdf", include_in_schema=False)
-async def e_waste_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, search: str | None = None, session: AsyncSession = Depends(get_db_session)):
+async def e_waste_register_pdf(current_user: User | RedirectResponse = Depends(get_web_current_user), store_id: int | None = None, search: str | None = None, paper_size: str = "auto", session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
-    assets=await RegisterService(session).e_waste_register(current_user.id,store_id,search=search)
-    rows=[{"asset_no":a.asset_no,"item":f"{a.item.code} — {a.item.name}" if a.item else a.item_id,"serial":a.serial_no or "","status":a.status,"store":a.current_store_id or "","office":a.current_office_id or "","section":a.current_section_id or ""} for a in assets]
-    cols=[("asset_no","Asset No"),("item","Item"),("serial","Serial"),("status","Status"),("store","Store"),("office","Office"),("section","Section")]
-    return pdf_response("E-Waste Register",cols,rows)
+    _, _, selected_store, _ = await load_store_context(current_user, session, store_id, None)
+    assets = await RegisterService(session).e_waste_register(current_user.id, store_id, search=search)
+    rows = await _asset_register_pdf_rows(session, assets)
+    cols = [("asset_no", "Asset No"), ("item", "Item"), ("serial", "Serial"), ("status", "Status"), ("store", "Store"), ("office", "Office"), ("section", "Section")]
+    return pdf_response(
+        "E-Waste Register",
+        cols,
+        rows,
+        selected_store.name if selected_store else "All Permitted Stores",
+        paper_size=paper_size,
+        meta_items=[("Store Scope", selected_store.name if selected_store else "All Permitted Stores")],
+        generated_by=current_user.full_name,
+        search_term=search,
+    )
 
 
 @router.get("/app/returns", include_in_schema=False)

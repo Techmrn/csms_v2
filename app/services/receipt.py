@@ -26,15 +26,13 @@ class ReceiptService:
 
     async def create(self, payload: ReceiptCreate, actor_id: int) -> Receipt:
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
-        store = await self.session.get(Store, payload.store_id)
         from app.services.authorization import AuthorizationService
         auth = AuthorizationService(self.session)
         await auth.require_permission(actor_id, "STOCK_RECEIPT")
         await auth.require_store_assignment(actor_id, payload.store_id)
+        store = await auth.require_general_store(payload.store_id)
         if fy is None:
             raise HTTPException(404, "Financial year not found")
-        if store is None:
-            raise HTTPException(404, "Store not found")
         if fy.is_closed:
             raise HTTPException(409, "Financial year is closed")
         if not (fy.start_date <= payload.receipt_date <= fy.end_date):

@@ -34,11 +34,9 @@ class StockService:
         await auth.require_store_assignment(actor_id, payload.store_id)
 
         fy = await self.session.get(FinancialYear, payload.financial_year_id)
-        store = await self.session.get(Store, payload.store_id)
+        store = await auth.require_general_store(payload.store_id)
         if fy is None:
             raise HTTPException(status_code=404, detail="Financial year not found")
-        if store is None:
-            raise HTTPException(status_code=404, detail="Store not found")
         if fy.is_closed:
             raise HTTPException(status_code=409, detail="Financial year is closed")
         if not (fy.start_date <= payload.opening_date <= fy.end_date):

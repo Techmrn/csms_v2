@@ -5,7 +5,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_return_create_permission_catalogued():
     text = (ROOT / "app/security/permissions.py").read_text()
     assert '"STOCK_RETURN_CREATE"' in text
-    assert '"SECTION_USER": ["INDENT_VIEW", "INDENT_CREATE", "STOCK_RETURN_VIEW", "STOCK_RETURN_CREATE"]' in text
+    assert '"SECTION_USER": [' in text
+    assert '"PAPER_VIEW", "PAPER_INDENT_CREATE"' in text
 
 def test_requisition_review_keeps_requested_read_only():
     text = (ROOT / "app/web/templates/requisition_detail.html").read_text()

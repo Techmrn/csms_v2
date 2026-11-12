@@ -15,7 +15,7 @@ class Store(TimestampMixin, Base):
     __tablename__ = "stores"
     __table_args__ = (
         CheckConstraint(
-            "store_type in ('CENTRAL', 'BRANCH', 'OTHER')",
+            "store_type in ('CENTRAL', 'BRANCH', 'PAPER_WAREHOUSE', 'OTHER')",
             name="store_type_valid",
         ),
     )

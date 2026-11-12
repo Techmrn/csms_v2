@@ -1,189 +1,426 @@
 {% extends "base.html" %}
 {% block title %}CSMS V2 — Dashboard{% endblock %}
-{% block page_title %}Dashboard{% endblock %}
+{% block page_title %}
+{% if is_warehouse_dashboard %}Paper Warehouse Workbench
+{% elif is_section_dashboard %}Section Requisitions Portal
+{% elif is_branch_head %}Press Executive Command
+{% elif is_deputy %}Central Approvals &amp; Store Control
+{% else %}Store Operations Workbench{% endif %}
+{% endblock %}
+
 {% block content %}
-{% if is_section_dashboard %}
+
+{% if is_warehouse_dashboard %}
+<!-- ==================== DEDICATED WAREHOUSEMAN WORKBENCH ==================== -->
 <div class="context-bar">
-  <div>
-    <div class="context-title">{{ user_section.name if user_section else 'Section User' }}{% if user_office %} · {{ user_office.name }}{% endif %}</div>
-    <div class="muted">Requisition workflow and indent tracking for your section. Store inventory balances are managed by the storekeeper.</div>
-  </div>
-  <div class="actions">
-    <a class="button primary" href="/app/online-indents/new">+ New online indent</a>
-  </div>
-</div>
-
-<div class="hero-grid">
-  <section class="hero card">
-    <div class="eyebrow">CURRENT ROLE</div>
-    <h2>{{ role_label }}</h2>
-    <p>{{ user_section.name if user_section else 'Assigned Section' }}{% if user_office %} ({{ user_office.name }}){% endif %}</p>
-    <div class="hero-context">Financial Year: {{ selected_fy.year_name if selected_fy else 'Current FY' }} · Target Store: {{ selected_store.name if selected_store else 'Store' }}</div>
-  </section>
-  <section class="stat-card card">
-    <span>Total Indents</span>
-    <strong>{{ total_indents }}</strong>
-    <small>All section requisitions</small>
-  </section>
-  <section class="stat-card card">
-    <span>Pending Review</span>
-    <strong style="color: var(--accent, #1d4ed8);">{{ pending_indents }}</strong>
-    <small>Recorded / in process</small>
-  </section>
-  <section class="stat-card card">
-    <span>Completed</span>
-    <strong style="color: #059669;">{{ completed_indents }}</strong>
-    <small>Issued &amp; finalized</small>
-  </section>
-</div>
-
-<div class="section-head">
-  <div>
-    <div class="eyebrow">REQUISITIONS TRACKER</div>
-    <h2>Recent section indents</h2>
-  </div>
-  <div class="actions">
-    <a class="button" href="/app/online-indents">View all indents</a>
-    <a class="button primary" href="/app/online-indents/new">+ New indent</a>
-  </div>
-</div>
-
-<div class="card table-card">
-  {% if recent_indents %}
-  <table>
-    <thead>
-      <tr>
-        <th>Indent No</th>
-        <th>Date</th>
-        <th>Target Store</th>
-        <th>Items</th>
-        <th>Status</th>
-        <th class="num">Action</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for indent in recent_indents %}
-      <tr>
-        <td><strong><a href="/app/indents/{{ indent.id }}">{{ indent.indent_no }}</a></strong></td>
-        <td>{{ indent.indent_date }}</td>
-        <td>{{ indent.store.name if indent.store else (stores|selectattr("id", "equalto", indent.store_id)|first).name if (stores|selectattr("id", "equalto", indent.store_id)|first) else indent.store_id }}</td>
-        <td>{{ indent.lines|length }} item{{ 's' if indent.lines|length != 1 else '' }}</td>
-        <td>
-          {% if indent.status == 'FINALIZED' or indent.status == 'COMPLETED' %}
-            <span class="badge" style="background: #dcfce7; color: #15803d;">{{ indent.status }}</span>
-          {% elif indent.status == 'PROCESSING' %}
-            <span class="badge" style="background: #e0f2fe; color: #0369a1;">{{ indent.status }}</span>
-          {% elif indent.status == 'RECORDED' or indent.status == 'SUBMITTED' %}
-            <span class="badge" style="background: #fef3c7; color: #b45309;">{{ indent.status }}</span>
-          {% elif indent.status == 'REJECTED' or indent.status == 'CANCELLED' %}
-            <span class="badge" style="background: #fee2e2; color: #b91c1c;">{{ indent.status }}</span>
-          {% else %}
-            <span class="badge">{{ indent.status }}</span>
-          {% endif %}
-        </td>
-        <td class="num">
-          <a class="button" style="padding: 4px 10px; font-size: 13px;" href="/app/indents/{{ indent.id }}">View</a>
-        </td>
-      </tr>
+  <form method="get" action="/app" class="context-form">
+    <select name="store_id" onchange="this.form.submit()">
+      {% for store in paper_stores %}
+      <option value="{{ store.id }}" {% if selected_store and selected_store.id==store.id %}selected{% endif %}>
+        📰 {{ store.name }}
+      </option>
       {% endfor %}
-    </tbody>
-  </table>
+    </select>
+    <select name="financial_year_id" onchange="this.form.submit()">
+      {% for fy in financial_years %}
+      <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id==fy.id %}selected{% endif %}>
+        {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </form>
+  <div class="page-actions">
+    {% if "PAPER_RECEIPT_CREATE" in permissions %}
+    <a class="button paper" href="/app/paper/receipts/new">+ Stationery Receipt</a>
+    {% endif %}
+    {% if "PAPER_ISSUE" in permissions %}
+    <a class="button primary" href="/app/paper/indents/new">+ Issue to Section</a>
+    {% endif %}
+    {% if "PAPER_OPENING_CREATE" in permissions %}
+    <a class="button" href="/app/paper/opening-stock/new">Opening Stock</a>
+    {% endif %}
+    <a class="button"
+      href="/app/paper/stock?store_id={{ selected_store.id if selected_store else '' }}&financial_year_id={{ selected_fy.id if selected_fy else '' }}">Paper
+      Stock →</a>
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <section class="stat-card card accent-paper">
+    <span>Sheet Paper Specs</span>
+    <strong>{{ sheet_specs }}</strong>
+    <small>Reams + Sheets ledger ({{ total_paper_specs }} active specs)</small>
+  </section>
+  <section class="stat-card card accent-general">
+    <span>Reel Paper Stock</span>
+    <strong style="color: #0369a1;">{{ "%.3f"|format(total_reel_kg) }} kg</strong>
+    <small>{{ reel_specs }} reel specification(s) · {{ "%.3f"|format(total_reel_kg / 1000) }} MT</small>
+  </section>
+  <section class="stat-card card {% if pending_indent_count > 0 %}accent-warn{% else %}accent-ok{% endif %}">
+    <span>Pending Section Indents</span>
+    <strong style="color: {% if pending_indent_count > 0 %}var(--warn){% else %}var(--ok){% endif %};">{{
+      pending_indent_count }}</strong>
+    <small>Requests awaiting warehouse issue</small>
+  </section>
+  <section class="stat-card card {% if pending_transfers > 0 %}accent-warn{% else %}accent-ok{% endif %}">
+    <span>Inter-Press Transfers</span>
+    <strong style="color: {% if pending_transfers > 0 %}var(--danger){% else %}var(--ok){% endif %};">{{
+      pending_transfers }}</strong>
+    <small>Pending dispatch or receipt</small>
+  </section>
+</div>
+
+<div class="workbench-section">
+  <div class="workbench-header">
+    <div>
+      <div class="eyebrow">PENDING ACTION QUEUE</div>
+      <h2 style="font-size: 17px; margin: 2px 0 0;">Tasks Requiring Attention — {{ selected_store.name if selected_store
+        else 'Paper Warehouse' }}</h2>
+    </div>
+    <a class="button sm" href="/app/paper/indents">All Section Indents</a>
+  </div>
+  {% if wh_queues %}
+  <div class="queue-list">
+    {% for q in wh_queues %}
+    <div class="queue-item">
+      <div class="queue-meta">
+        <div class="queue-title">{{ q.title }} <span class="badge {{ q.badge_color }}">{{ q.badge }}</span></div>
+        <div class="queue-sub">{{ q.desc }} · {{ q.date }}</div>
+      </div>
+      <a class="button primary sm" href="{{ q.url }}">Open →</a>
+    </div>
+    {% endfor %}
+  </div>
   {% else %}
-  <div class="empty">
-    <p>No online indents raised yet.</p>
-    <a class="button primary" style="margin-top: 10px; display: inline-block;" href="/app/online-indents/new">+ Create first online indent</a>
+  <div class="empty" style="padding: 20px;">
+    <strong>All caught up!</strong> No pending section paper requests or inter-press transfers in this warehouse.
   </div>
   {% endif %}
 </div>
 
-<div class="section-head">
+<div class="quick-action-grid">
+  <a class="quick-action-card paper"
+    href="/app/paper/stock?store_id={{ selected_store.id if selected_store else '' }}&financial_year_id={{ selected_fy.id if selected_fy else '' }}">
+    <span>Full Paper Stock Ledger</span><span>→</span>
+  </a>
+  {% if "PAPER_REGISTER_VIEW" in permissions %}
+  <a class="quick-action-card paper"
+    href="/app/paper/registers?store_id={{ selected_store.id if selected_store else '' }}&financial_year_id={{ selected_fy.id if selected_fy else '' }}">
+    <span>Warehouse Registers &amp; PDFs</span><span>→</span>
+  </a>
+  {% endif %}
+  <a class="quick-action-card paper"
+    href="/app/paper/receipts?store_id={{ selected_store.id if selected_store else '' }}">
+    <span>Stationery Department Receipts</span><span>→</span>
+  </a>
+  <a class="quick-action-card paper" href="/app/paper/transfers">
+    <span>Inter-Press Paper Transfers</span><span>→</span>
+  </a>
+</div>
+
+{% elif is_section_dashboard %}
+<!-- ==================== SECTION USER SELF-SERVICE PORTAL ==================== -->
+<div class="context-bar">
   <div>
-    <div class="eyebrow">WORK AREAS</div>
-    <h2>Available for your section</h2>
+    <div class="context-title" style="margin-bottom: 2px;">{{ user_section.name if user_section else 'Section User' }}{%
+      if user_office %} · {{ user_office.name }}{% endif %}</div>
+    <div class="muted small">Raise requisitions and monitor fulfillment status without leaving your section workspace.
+    </div>
+  </div>
+  <span class="badge info">Financial Year: {{ selected_fy.year_name if selected_fy else 'Current' }}</span>
+</div>
+
+<div class="kpi-grid cols-3">
+  <section class="stat-card card accent-general">
+    <span>Total Indents</span>
+    <strong>{{ total_indents }}</strong>
+    <small>Combined section requisitions</small>
+  </section>
+  <section class="stat-card card {% if pending_indents > 0 %}accent-warn{% else %}accent-ok{% endif %}">
+    <span>Pending Review</span>
+    <strong style="color: {% if pending_indents > 0 %}var(--warn){% else %}var(--ok){% endif %};">{{ pending_indents
+      }}</strong>
+    <small>Awaiting processing or issue</small>
+  </section>
+  <section class="stat-card card accent-ok">
+    <span>Completed</span>
+    <strong style="color: var(--ok);">{{ completed_indents }}</strong>
+    <small>Issued &amp; finalized</small>
+  </section>
+</div>
+
+<div class="grid {% if has_paper_warehouse %}cols-2{% endif %}" style="margin-bottom: 22px;">
+  {% if has_paper_warehouse %}
+  <div class="card"
+    style="border-top: 4px solid #d97706; display: flex; flex-direction: column; justify-content: space-between;">
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span class="badge paper">📰 PAPER WAREHOUSE</span>
+      </div>
+      <h3 style="margin: 0 0 6px; font-size: 17px;">Request Paper for Print Job</h3>
+      <p class="muted small" style="margin: 0 0 14px;">Submit an online requisition in Reams+Sheets or KG directly to
+        the Press Paper Warehouse.</p>
+    </div>
+    <div class="page-actions">
+      <a class="button paper" style="flex: 1;" href="/app/paper/online-indents/new">+ New Paper Indent</a>
+      <a class="button" href="/app/paper/indents">Paper History</a>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card"
+    style="border-top: 4px solid #1e40af; display: flex; flex-direction: column; justify-content: space-between;">
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span class="badge info">📦 GENERAL STORE</span>
+      </div>
+      <h3 style="margin: 0 0 6px; font-size: 17px;">Request General Consumables</h3>
+      <p class="muted small" style="margin: 0 0 14px;">Submit an online indent for inks, chemicals, spare parts, or
+        office stationery from the General Store.</p>
+    </div>
+    <div class="page-actions">
+      <a class="button primary" style="flex: 1;" href="/app/online-indents/new">+ New General Indent</a>
+      <a class="button" href="/app/online-indents">General History</a>
+    </div>
   </div>
 </div>
-<div class="module-grid">
-  {% for item in menu if item.label != 'Dashboard' %}
-  <a class="module card" href="{{ item.href }}">
-    <span>{{ item.label }}</span>
-    <span class="arrow">→</span>
-  </a>
-  {% endfor %}
+
+<div class="grid {% if recent_paper_indents and has_paper_warehouse %}cols-2{% endif %}">
+  <div class="workbench-section" style="margin-bottom: 0;">
+    <div class="workbench-header">
+      <div>
+        <div class="eyebrow">GENERAL STORE REQUESTS</div>
+        <h3 style="margin: 2px 0 0;">Recent section indents</h3>
+      </div>
+      <a class="button sm" href="/app/online-indents">View all</a>
+    </div>
+    {% if recent_indents %}
+    <div class="queue-list">
+      {% for indent in recent_indents %}
+      <div class="queue-item">
+        <div class="queue-meta">
+          <div class="queue-title">{{ indent.indent_no }} <span class="badge">{{ indent.status }}</span></div>
+          <div class="queue-sub">{{ indent.store.name if indent.store else indent.store_id }} · {{ indent.lines|length
+            }} item(s) · {{ indent.indent_date }}</div>
+        </div>
+        <a class="button sm" href="/app/indents/{{ indent.id }}">View</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty" style="padding: 18px;">No general store online indents raised yet.</div>
+    {% endif %}
+  </div>
+
+  {% if has_paper_warehouse and recent_paper_indents %}
+  <div class="workbench-section" style="margin-bottom: 0;">
+    <div class="workbench-header">
+      <div>
+        <div class="eyebrow" style="color: #b45309;">PAPER WAREHOUSE REQUESTS</div>
+        <h3 style="margin: 2px 0 0;">Recent Job Paper Indents</h3>
+      </div>
+      <a class="button sm" href="/app/paper/indents">View all</a>
+    </div>
+    <div class="queue-list">
+      {% for pi in recent_paper_indents %}
+      <div class="queue-item">
+        <div class="queue-meta">
+          <div class="queue-title">{{ pi.indent_no }} <span class="badge paper">{{ pi.status }}</span></div>
+          <div class="queue-sub">Job: {{ pi.job_no or 'General Run' }} · {{ pi.lines|length }} line(s) · {{
+            pi.indent_date }}</div>
+        </div>
+        <a class="button sm" href="/app/paper/indents/{{ pi.id }}">View</a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 {% else %}
-
+<!-- ==================== STOREKEEPER / BRANCH HEAD / DEPUTY CONTROLLER WORKBENCH ==================== -->
 <div class="context-bar">
-  <div class="context-title">Working context</div>
   <form method="get" action="/app" class="context-form">
-    <select name="store_id">
-      {% for store in stores %}<option value="{{ store.id }}" {% if selected_store and selected_store.id==store.id
-        %}selected{% endif %}>{{ store.name }}</option>{% endfor %}
+    <select name="store_id" onchange="this.form.submit()">
+      {% for store in stores %}
+      <option value="{{ store.id }}" {% if selected_store and selected_store.id==store.id %}selected{% endif %}>
+        📦 {{ store.name }}
+      </option>
+      {% endfor %}
     </select>
-    <select name="financial_year_id">
-      {% for fy in financial_years %}<option value="{{ fy.id }}" {% if selected_fy and selected_fy.id==fy.id
-        %}selected{% endif %}>{{ fy.year_name }}{% if fy.is_current %} — Current{% endif %}</option>{% endfor %}
+    <select name="financial_year_id" onchange="this.form.submit()">
+      {% for fy in financial_years %}
+      <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id==fy.id %}selected{% endif %}>
+        {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}
+      </option>
+      {% endfor %}
     </select>
-    <button class="button" type="submit">Apply</button>
   </form>
-</div>
-
-<div class="hero-grid">
-  <section class="hero card">
-    <div class="eyebrow">CURRENT ROLE</div>
-    <h2>{{ role_label }}</h2>
-    <p>Operate only within the stores, offices, approvals and transaction permissions assigned to your role.</p>
-    <div class="hero-context">{{ selected_store.name if selected_store else 'No store selected' }} · {{
-      selected_fy.year_name if selected_fy else 'No FY selected' }}</div>
-  </section>
-  <section class="stat-card card"><span>Items</span><strong>{{ item_count }}</strong><small>Active master items</small>
-  </section>
-  <section class="stat-card card"><span>Stock Accounts</span><strong>{{ stock_count }}</strong><small>Items with ledger
-      activity</small></section>
-  <section class="stat-card card"><span>Assets</span><strong>{{ asset_count }}</strong><small>Assets held in selected
-      store</small></section>
-</div>
-
-<div class="section-head">
-  <div>
-    <div class="eyebrow">STOCK OVERVIEW</div>
-    <h2>Current balance</h2>
-  </div><a class="button"
-    href="/app/stock?store_id={{ selected_store.id if selected_store else '' }}&financial_year_id={{ selected_fy.id if selected_fy else '' }}">Open
-    stock</a>
-</div>
-<div class="card table-card">
-  {% if stock_rows %}
-  <table>
-    <thead>
-      <tr>
-        <th>Item</th>
-        <th>Code</th>
-        <th>Unit</th>
-        <th class="num">Balance</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in stock_rows %}<tr>
-        <td>{{ row.name }}</td>
-        <td>{{ row.code }}</td>
-        <td>{{ row[5] }}</td>
-        <td class="num">{{ row.balance }}</td>
-      </tr>{% endfor %}
-    </tbody>
-  </table>
-  {% else %}<div class="empty">Select a visible store and financial year to view stock.</div>{% endif %}
-</div>
-
-<div class="section-head">
-  <div>
-    <div class="eyebrow">WORK AREAS</div>
-    <h2>Available for your role</h2>
+  <div class="page-actions">
+    {% if "STOCK_VIEW" in permissions %}
+    <a class="button primary"
+      href="/app/stock?store_id={{ selected_store.id if selected_store else '' }}&financial_year_id={{ selected_fy.id if selected_fy else '' }}">Open
+      Stock Ledger →</a>
+    {% endif %}
+    {% if "REGISTER_VIEW" in permissions %}
+    <a class="button" href="/app/registers">Store Registers</a>
+    {% endif %}
+    {% if "PAPER_REGISTER_VIEW" in permissions %}
+    <a class="button" href="/app/paper/registers">Warehouse Registers</a>
+    {% endif %}
   </div>
 </div>
-<div class="module-grid">
-  {% for item in menu if item.label != 'Dashboard' %}<a class="module card" href="{{ item.href }}"><span>{{ item.label
-      }}</span><span class="arrow">→</span></a>{% endfor %}
+
+{% if is_branch_head or is_deputy %}
+<div class="workbench-section"
+  style="border-left: 4px solid {% if pending_approvals %}#d97706{% else %}#16a34a{% endif %};">
+  <div class="workbench-header">
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+      <strong style="font-size: 16px;">Executive Approvals Hub</strong>
+      {% if pending_approvals %}
+      <span class="badge warn">{{ pending_approvals|length }} Action Needed</span>
+      {% else %}
+      <span class="badge ok">All Clear</span>
+      {% endif %}
+    </div>
+    <span class="muted small">{{ user.office.name if user.office else 'Directorate' }}</span>
+  </div>
+  {% if pending_approvals %}
+  <div class="grid cols-3">
+    {% for apprv in pending_approvals %}
+    <div class="queue-item"
+      style="flex-direction: column; align-items: stretch; justify-content: space-between; background: #ffffff;">
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+          <strong style="font-size: 13px;">{{ apprv.title }}</strong>
+          <span class="badge {{ apprv.badge_color }}">{{ apprv.badge }}</span>
+        </div>
+        <div class="queue-sub" style="margin-top: 4px;">{{ apprv.desc }} · {{ apprv.date }}</div>
+      </div>
+      <a class="button primary sm" href="{{ apprv.url }}">Review →</a>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="muted small">No pending branch or directorate approvals at this moment.</div>
+  {% endif %}
 </div>
 {% endif %}
+
+{% if is_branch_head and paper_summary %}
+<div class="grid cols-2" style="margin-bottom: 20px;">
+  <div class="card"
+    style="border-top: 3px solid #1e40af; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+    <div>
+      <div class="eyebrow">GENERAL STORE</div>
+      <h3 style="margin: 2px 0;">{{ selected_store.name if selected_store else 'Press General Store' }}</h3>
+      <div class="muted small">{{ stock_count }} active consumable items · {{ asset_count }} assets</div>
+    </div>
+    <div class="page-actions">
+      <a class="button sm" href="/app/stock">Stock</a>
+      <a class="button sm" href="/app/registers">Registers</a>
+    </div>
+  </div>
+  <div class="card"
+    style="border-top: 3px solid #d97706; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+    <div>
+      <div class="eyebrow" style="color: #b45309;">PAPER WAREHOUSE</div>
+      <h3 style="margin: 2px 0;">{{ paper_summary.warehouse.name }}</h3>
+      <div class="muted small">{{ paper_summary.sheet_specs }} sheet specs · {{ "%.3f"|format(paper_summary.reel_kg) }}
+        kg reel stock</div>
+    </div>
+    <div class="page-actions">
+      <a class="button sm" href="/app/paper/stock">Stock</a>
+      <a class="button sm" href="/app/paper/registers">Registers</a>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="kpi-grid">
+  <section class="stat-card card accent-general">
+    <span>Active Stock Items</span>
+    <strong>{{ stock_count }}</strong>
+    <small>{{ selected_store.name if selected_store else 'No store selected' }} ({{ "%.0f"|format(total_units) }}
+      units)</small>
+  </section>
+  <section class="stat-card card accent-general">
+    <span>Master Catalog Items</span>
+    <strong>{{ item_count }}</strong>
+    <small>Consumables &amp; Assets definitions</small>
+  </section>
+  <section class="stat-card card accent-ok">
+    <span>Assets Held</span>
+    <strong>{{ asset_count }}</strong>
+    <small>Tracked in selected store</small>
+  </section>
+  <section class="stat-card card {% if op_queues %}accent-warn{% else %}accent-ok{% endif %}">
+    <span>Pending Operational Queue</span>
+    <strong style="color: {% if op_queues %}var(--warn){% else %}var(--ok){% endif %};">{{ op_queues|length }}</strong>
+    <small>Indents, transfers &amp; receipts to process</small>
+  </section>
+</div>
+
+<div class="workbench-section">
+  <div class="workbench-header">
+    <div>
+      <div class="eyebrow">STORE OPERATIONS QUEUE</div>
+      <h2 style="font-size: 17px; margin: 2px 0 0;">Pending Work Items — {{ selected_store.name if selected_store else
+        'Selected Store' }}</h2>
+    </div>
+    <div class="page-actions">
+      {% if "INDENT_PROCESS" in permissions %}
+      <a class="button primary sm" href="/app/indents/new">+ Manual Indent</a>
+      {% endif %}
+      {% if "STOCK_RECEIPT_CREATE" in permissions %}
+      <a class="button sm" href="/app/receipts/new">+ Supplier Receipt</a>
+      {% endif %}
+    </div>
+  </div>
+  {% if op_queues %}
+  <div class="queue-list">
+    {% for item in op_queues %}
+    <div class="queue-item">
+      <div class="queue-meta">
+        <div class="queue-title">{{ item.title }} <span class="badge {{ item.badge_color }}">{{ item.badge }}</span>
+        </div>
+        <div class="queue-sub">{{ item.desc }} · {{ item.date }}</div>
+      </div>
+      <a class="button primary sm" href="{{ item.url }}">Process →</a>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty" style="padding: 18px;">
+    <strong>Queue clear.</strong> Use <strong>Open Stock Ledger</strong> or <strong>Store Registers</strong> to inspect
+    balances and historical records.
+  </div>
+  {% endif %}
+</div>
+
+<div class="quick-action-grid">
+  {% if "STOCK_VIEW" in permissions %}
+  <a class="quick-action-card"
+    href="/app/stock?store_id={{ selected_store.id if selected_store else '' }}&financial_year_id={{ selected_fy.id if selected_fy else '' }}">
+    <span>General Store Stock Ledger</span><span>→</span>
+  </a>
+  {% endif %}
+  {% if "INDENT_PROCESS" in permissions %}
+  <a class="quick-action-card" href="/app/indents">
+    <span>Manual &amp; Online Indents</span><span>→</span>
+  </a>
+  {% endif %}
+  {% if "REQUISITION_VIEW" in permissions %}
+  <a class="quick-action-card" href="/app/requisitions">
+    <span>Branch Requisitions</span><span>→</span>
+  </a>
+  {% endif %}
+  {% if "REGISTER_VIEW" in permissions %}
+  <a class="quick-action-card" href="/app/registers">
+    <span>Store &amp; Asset Registers (PDF)</span><span>→</span>
+  </a>
+  {% endif %}
+</div>
+{% endif %}
+
 {% endblock %}

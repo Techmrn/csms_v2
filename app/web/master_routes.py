@@ -448,7 +448,7 @@ async def financial_years_page(request: Request, current_user: User | RedirectRe
 async def create_financial_year_web(year_name: Annotated[str, Form()], start_date: Annotated[date, Form()], end_date: Annotated[date, Form()], is_current: Annotated[str | None, Form()] = None, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
     try:
-        await require_master_user(current_user, session); await MasterAdminService(session).create_financial_year({"year_name": year_name.strip(), "start_date": start_date, "end_date": end_date, "is_current": is_current == "on"})
+        await require_master_user(current_user, session); await MasterAdminService(session).create_financial_year({"year_name": year_name.strip(), "start_date": start_date, "end_date": end_date, "is_current": is_current == "on"}, actor_id=current_user.id)
         await session.commit(); return RedirectResponse(url="/app/admin/financial-years?success=Financial%20year%20saved%20successfully.", status_code=303)
     except (HTTPException, ValueError) as exc:
         await session.rollback(); return redirect_with_error("/app/admin/financial-years", exc.detail if isinstance(exc, HTTPException) else str(exc))
@@ -458,10 +458,154 @@ async def create_financial_year_web(year_name: Annotated[str, Form()], start_dat
 async def update_financial_year_web(fy_id: int, start_date: Annotated[date, Form()], end_date: Annotated[date, Form()], is_current: Annotated[str | None, Form()] = None, is_closed: Annotated[str | None, Form()] = None, current_user: User | RedirectResponse = Depends(get_web_current_user), session: AsyncSession = Depends(get_db_session)):
     if isinstance(current_user, RedirectResponse): return current_user
     try:
-        await require_master_user(current_user, session); await MasterAdminService(session).update_financial_year(fy_id, {"start_date": start_date, "end_date": end_date, "is_current": is_current == "on", "is_closed": is_closed == "on"})
+        await require_master_user(current_user, session); await MasterAdminService(session).update_financial_year(fy_id, {"start_date": start_date, "end_date": end_date, "is_current": is_current == "on", "is_closed": is_closed == "on"}, actor_id=current_user.id)
         await session.commit(); return RedirectResponse(url="/app/admin/financial-years?success=Financial%20year%20saved%20successfully.", status_code=303)
     except (HTTPException, ValueError) as exc:
         await session.rollback(); return redirect_with_error(f"/app/admin/financial-years?edit={fy_id}", exc.detail if isinstance(exc, HTTPException) else str(exc))
+
+
+@router.post("/app/admin/financial-years/carry-forward", include_in_schema=False)
+async def carry_forward_financial_year_web(
+    source_fy_id: Annotated[int, Form()],
+    target_fy_id: Annotated[int, Form()],
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    try:
+        await require_master_user(current_user, session)
+        from app.services.fy_rollover import FinancialYearRolloverService
+        counts = await FinancialYearRolloverService(session).carry_forward(
+            source_fy_id, target_fy_id, actor_id=current_user.id
+        )
+        await session.commit()
+        from urllib.parse import quote
+        msg = f"Carried forward {counts['general_items_carried']} store item(s) and {counts['paper_items_carried']} paper item(s)."
+        return RedirectResponse(url=f"/app/admin/financial-years?success={quote(msg)}", status_code=303)
+    except (HTTPException, ValueError) as exc:
+        await session.rollback()
+        return redirect_with_error("/app/admin/financial-years", exc.detail if isinstance(exc, HTTPException) else str(exc))
+
+
+@router.get("/app/admin/paper-items", include_in_schema=False)
+async def paper_items_admin_page(
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    await AuthorizationService(session).require_permission(current_user.id, "PAPER_MASTER_MANAGE")
+    from app.paper_store.models.item import PaperItem
+
+    paper_items = list(
+        (
+            await session.scalars(
+                select(PaperItem).options(selectinload(PaperItem.unit)).order_by(PaperItem.name)
+            )
+        ).all()
+    )
+    units = list((await session.scalars(select(Unit).where(Unit.is_active.is_(True)).order_by(Unit.code))).all())
+    edit_id = request.query_params.get("edit")
+    edit_item = await session.get(PaperItem, int(edit_id)) if edit_id else None
+    return render(
+        request,
+        "paper/items.html",
+        current_user,
+        paper_items=paper_items,
+        units=units,
+        edit_item=edit_item,
+    )
+
+
+@router.post("/app/admin/paper-items/new", include_in_schema=False)
+async def create_paper_item_web(
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    form = await request.form()
+    try:
+        await AuthorizationService(session).require_permission(current_user.id, "PAPER_MASTER_MANAGE")
+        from app.paper_store.models.item import PaperItem
+
+        code = str(form["code"]).strip().upper()
+        name = str(form["name"]).strip()
+        paper_type = str(form["paper_type"]).strip()
+        form_type = str(form["form_type"]).strip().upper()
+        gsm = int(form["gsm"])
+        sheets_per_ream = int(form.get("sheets_per_ream") or 500)
+        unit_id = int(form["unit_id"])
+        length_cm = Decimal(str(form["length_cm"])) if form.get("length_cm") else None
+        width_cm = Decimal(str(form["width_cm"])) if form.get("width_cm") else None
+        reel_width_cm = Decimal(str(form["reel_width_cm"])) if form.get("reel_width_cm") else None
+        weight_per_ream_kg = Decimal(str(form["weight_per_ream_kg"])) if form.get("weight_per_ream_kg") else None
+        remarks = str(form.get("remarks") or "").strip() or None
+
+        existing = await session.scalar(select(PaperItem.id).where(PaperItem.code == code).limit(1))
+        if existing is not None:
+            raise HTTPException(409, f"Paper item code {code} already exists")
+
+        p_item = PaperItem(
+            code=code,
+            name=name,
+            paper_type=paper_type,
+            form_type=form_type,
+            gsm=gsm,
+            sheets_per_ream=sheets_per_ream,
+            unit_id=unit_id,
+            length_cm=length_cm,
+            width_cm=width_cm,
+            reel_width_cm=reel_width_cm,
+            weight_per_ream_kg=weight_per_ream_kg,
+            remarks=remarks,
+            is_active=True,
+        )
+        session.add(p_item)
+        await session.commit()
+        return RedirectResponse(url="/app/admin/paper-items?success=Paper%20item%20created.", status_code=303)
+    except (HTTPException, ValueError, InvalidOperation) as exc:
+        await session.rollback()
+        return redirect_with_error("/app/admin/paper-items", exc.detail if isinstance(exc, HTTPException) else str(exc))
+
+
+@router.post("/app/admin/paper-items/{item_id}/save", include_in_schema=False)
+async def update_paper_item_web(
+    item_id: int,
+    request: Request,
+    current_user: User | RedirectResponse = Depends(get_web_current_user),
+    session: AsyncSession = Depends(get_db_session),
+):
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    form = await request.form()
+    try:
+        await AuthorizationService(session).require_permission(current_user.id, "PAPER_MASTER_MANAGE")
+        from app.paper_store.models.item import PaperItem
+
+        p_item = await session.get(PaperItem, item_id)
+        if not p_item:
+            raise HTTPException(404, "Paper item not found")
+        p_item.name = str(form["name"]).strip()
+        p_item.paper_type = str(form["paper_type"]).strip()
+        p_item.form_type = str(form["form_type"]).strip().upper()
+        p_item.gsm = int(form["gsm"])
+        p_item.sheets_per_ream = int(form.get("sheets_per_ream") or 500)
+        p_item.unit_id = int(form["unit_id"])
+        p_item.length_cm = Decimal(str(form["length_cm"])) if form.get("length_cm") else None
+        p_item.width_cm = Decimal(str(form["width_cm"])) if form.get("width_cm") else None
+        p_item.reel_width_cm = Decimal(str(form["reel_width_cm"])) if form.get("reel_width_cm") else None
+        p_item.weight_per_ream_kg = Decimal(str(form["weight_per_ream_kg"])) if form.get("weight_per_ream_kg") else None
+        p_item.remarks = str(form.get("remarks") or "").strip() or None
+        p_item.is_active = form.get("is_active") == "on"
+        await session.commit()
+        return RedirectResponse(url="/app/admin/paper-items?success=Paper%20item%20updated.", status_code=303)
+    except (HTTPException, ValueError, InvalidOperation) as exc:
+        await session.rollback()
+        return redirect_with_error(f"/app/admin/paper-items?edit={item_id}", exc.detail if isinstance(exc, HTTPException) else str(exc))
 
 
 @router.get("/app/admin/policies", include_in_schema=False)

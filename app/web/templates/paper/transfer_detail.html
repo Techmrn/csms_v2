@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Inter-Press Transfer {{ transfer.transfer_no }}{% endblock %}
+{% block page_title %}Inter-Press Paper Transfer{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">INTER-PRESS PAPER MOVEMENT · {{ transfer.transfer_mode }}</div>
+    <h1>{{ transfer.transfer_no }}</h1>
+    <p class="muted small">
+      <strong>{{ transfer.source_store.name }}</strong> &rarr; <strong>{{ transfer.destination_store.name }}</strong> ·
+      Date: <strong>{{ transfer.transfer_date }}</strong> · FY: <strong>{{ transfer.financial_year.year_name }}</strong>
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/app/paper/transfers">← Back to Transfers</a>
+    <a class="button primary" href="/app/paper/transfers/{{ transfer.id }}/gate-pass.pdf?paper_size=a4_portrait">Gate Pass PDF (A4)</a>
+    <a class="button" href="/app/paper/transfers/{{ transfer.id }}/gate-pass.pdf?paper_size=a3_landscape">A3 PDF</a>
+    {% if transfer.status in ['DISPATCHED', 'RECEIVED', 'DISCREPANCY'] %}
+    <button class="button" type="button" onclick="window.print()">Print Voucher</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 18px;">
+  <div class="grid cols-4" style="margin-bottom: 14px;">
+    <div>
+      <div class="muted small">Supplying Warehouse (Source)</div>
+      <strong>{{ transfer.source_store.name }}</strong>
+      <div class="muted small">{{ transfer.source_store.office.name }}</div>
+    </div>
+    <div>
+      <div class="muted small">Receiving Warehouse (Destination)</div>
+      <strong>{{ transfer.destination_store.name }}</strong>
+      <div class="muted small">{{ transfer.destination_store.office.name }}</div>
+    </div>
+    <div>
+      <div class="muted small">Transport &amp; Gate Pass</div>
+      <strong>{{ transfer.vehicle_no or '—' }}</strong>
+      <div class="muted small">Carrier: {{ transfer.carrier_name or '—' }}{% if transfer.gate_pass_no %} · GP: {{
+        transfer.gate_pass_no }}{% endif %}</div>
+    </div>
+    <div>
+      <div class="muted small">Status</div>
+      {% if transfer.status == 'RECEIVED' %}
+      <span class="badge ok">RECEIVED</span>
+      {% elif transfer.status == 'DISPATCHED' %}
+      <span class="badge warn">IN TRANSIT</span>
+      {% elif transfer.status == 'DISCREPANCY' %}
+      <span class="badge danger">DISCREPANCY</span>
+      {% elif transfer.status in ['DIRECTORATE_DIRECTIVE', 'BRANCH_APPROVED'] %}
+      <span class="badge info">{{ transfer.status }}</span>
+      {% else %}
+      <span class="badge">{{ transfer.status }}</span>
+      {% endif %}
+    </div>
+  </div>
+  {% if transfer.remarks %}
+  <div><strong>Audit Remarks:</strong> <span class="muted small">{{ transfer.remarks }}</span></div>
+  {% endif %}
+</div>
+
+<div class="card table-card" style="margin-bottom: 18px;">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Paper Item Specification</th>
+        <th>Form</th>
+        <th class="num">Requested</th>
+        <th class="num">Approved</th>
+        <th class="num">Dispatched</th>
+        <th class="num">Received</th>
+        <th class="num">Weight (KG)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in transfer.lines %}
+      {% set item = line.paper_item %}
+      {% set ftype = item.form_type if item else 'SHEET' %}
+      {% set spr = item.sheets_per_ream if item else 500 %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>
+          <strong>{{ item.name }}</strong>
+          <div class="muted small">{{ item.code }} · {{ item.gsm }} GSM</div>
+        </td>
+        <td><span class="badge">{{ ftype }}</span></td>
+        <td class="num">{{ format_paper(ftype, line.requested_sheets, line.requested_weight_kg or
+          line.requested_quantity, spr) }}</td>
+        <td class="num">
+          {% if line.approved_sheets is not none or line.approved_quantity is not none %}
+          {{ format_paper(ftype, line.approved_sheets or 0, line.approved_quantity or 0, spr) }}
+          {% else %}—{% endif %}
+        </td>
+        <td class="num"><strong>{{ format_paper(ftype, line.dispatched_sheets, line.dispatched_weight_kg, spr)
+            }}</strong></td>
+        <td class="num"><strong style="color: var(--ok);">{{ format_paper(ftype, line.received_sheets,
+            line.received_weight_kg, spr) }}</strong></td>
+        <td class="num">{{ '%.3f'|format(line.received_weight_kg or line.dispatched_weight_kg or
+          line.requested_weight_kg or 0) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if transfer.status == 'SUBMITTED' and can_approve_branch %}
+<div class="card form-card" style="border: 2px solid var(--ok); margin-bottom: 18px;">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">BRANCH HEAD APPROVAL</div>
+      <h3>Approve Transfer Request</h3>
+    </div>
+  </div>
+  <p class="small muted">As Branch Head of the supplying Press, approve this transfer so your Warehouseman can dispatch
+    it.</p>
+  <form method="post" action="/app/paper/transfers/{{ transfer.id }}/approve-branch" class="stack">
+    <label>
+      Approval Notes
+      <input name="remarks" placeholder="Approved for dispatch">
+    </label>
+    <div class="form-actions">
+      <button class="button primary" type="submit">Approve Paper Transfer</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{% if (transfer.status == 'DIRECTORATE_DIRECTIVE' or transfer.status == 'BRANCH_APPROVED') and can_dispatch %}
+<div class="card form-card" style="border: 2px solid var(--warn); margin-bottom: 18px;">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">WAREHOUSEMAN DISPATCH &amp; GATE PASS</div>
+      <h3>Execute Physical Dispatch</h3>
+    </div>
+  </div>
+  <p class="small muted">Enter transport details and actual dispatched Reams+Sheets or Weight (KG). Stock is atomically
+    deducted upon dispatch.</p>
+
+  <form method="post" action="/app/paper/transfers/{{ transfer.id }}/dispatch" class="stack">
+    <div class="grid cols-4">
+      <label>
+        Vehicle / Lorry No *
+        <input name="vehicle_no" placeholder="e.g. KL-01-AB-1234" required>
+      </label>
+      <label>
+        Driver Name
+        <input name="driver_name" placeholder="Driver name">
+      </label>
+      <label>
+        Carrier / Transport Agency
+        <input name="carrier_name" placeholder="Carrier Agency">
+      </label>
+      <label>
+        Gate Pass No
+        <input name="gate_pass_no" value="GP-{{ transfer.transfer_no }}">
+      </label>
+    </div>
+
+    <div class="card table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Paper Variety</th>
+            <th>Approved Qty</th>
+            <th style="min-width: 240px;">Dispatch Quantity *</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in transfer.lines %}
+          {% set item = line.paper_item %}
+          {% set ftype = item.form_type %}
+          {% set spr = item.sheets_per_ream or 500 %}
+          {% set base_sh = line.approved_sheets if line.approved_sheets is not none else line.requested_sheets %}
+          {% set disp_rs = from_total_sheets(base_sh, spr) %}
+          <tr>
+            <td>
+              <strong>{{ item.name }}</strong>
+              <input type="hidden" name="line_id" value="{{ line.id }}">
+            </td>
+            <td class="small">{{ format_paper(ftype, base_sh, line.requested_weight_kg or line.requested_quantity, spr)
+              }}</td>
+            <td>
+              {% if ftype == 'REEL' %}
+              <input type="hidden" name="dispatch_reams" value="0">
+              <input type="hidden" name="dispatch_sheets" value="0">
+              <div class="split-qty">
+                <input name="weight_kg" type="number" min="0.001" step="0.001"
+                  value="{{ line.requested_weight_kg or line.requested_quantity }}" required>
+                <span class="unit-tag">KG</span>
+              </div>
+              {% else %}
+              <div class="split-qty">
+                <input name="dispatch_reams" type="number" min="0" step="1" value="{{ disp_rs[0] }}" required>
+                <span class="unit-tag">R</span>
+                <input name="dispatch_sheets" type="number" min="0" step="1" value="{{ disp_rs[1] }}" required>
+                <span class="unit-tag">S</span>
+              </div>
+              <input type="hidden" name="weight_kg" value="0">
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <label>
+      Dispatch Remarks
+      <input name="remarks" placeholder="Seal number, tarpaulin condition, etc.">
+    </label>
+
+    <div class="form-actions">
+      <button class="button primary" type="submit">Confirm Dispatch &amp; Generate Gate Pass</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
+{% if transfer.status == 'DISPATCHED' and can_receive %}
+<div class="card form-card" style="border: 2px solid var(--brand); margin-bottom: 18px;">
+  <div class="section-head">
+    <div>
+      <div class="eyebrow">WAREHOUSEMAN INWARD RECEIPT</div>
+      <h3>Receive Paper at Destination Warehouse</h3>
+    </div>
+  </div>
+  <p class="small muted">Verify physical Reams+Sheets or Reel Weight (KG) unloaded. Accepted stock posts atomically into
+    your warehouse ledger.</p>
+
+  <form method="post" action="/app/paper/transfers/{{ transfer.id }}/receive" class="stack">
+    <div class="card table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Paper Variety</th>
+            <th>Dispatched Qty</th>
+            <th style="min-width: 240px;">Actual Received Quantity *</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in transfer.lines %}
+          {% set item = line.paper_item %}
+          {% set ftype = item.form_type %}
+          {% set spr = item.sheets_per_ream or 500 %}
+          {% set recv_rs = from_total_sheets(line.dispatched_sheets, spr) %}
+          <tr>
+            <td>
+              <strong>{{ item.name }}</strong>
+              <input type="hidden" name="line_id" value="{{ line.id }}">
+            </td>
+            <td class="small">{{ format_paper(ftype, line.dispatched_sheets, line.dispatched_weight_kg, spr) }}</td>
+            <td>
+              {% if ftype == 'REEL' %}
+              <input type="hidden" name="received_reams" value="0">
+              <input type="hidden" name="received_sheets" value="0">
+              <div class="split-qty">
+                <input name="weight_kg" type="number" min="0" step="0.001" value="{{ line.dispatched_weight_kg }}"
+                  required>
+                <span class="unit-tag">KG</span>
+              </div>
+              {% else %}
+              <div class="split-qty">
+                <input name="received_reams" type="number" min="0" step="1" value="{{ recv_rs[0] }}" required>
+                <span class="unit-tag">R</span>
+                <input name="received_sheets" type="number" min="0" step="1" value="{{ recv_rs[1] }}" required>
+                <span class="unit-tag">S</span>
+              </div>
+              <input type="hidden" name="weight_kg" value="{{ line.dispatched_weight_kg or 0 }}">
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <label>
+      Receipt Remarks
+      <input name="remarks" placeholder="Consignment received in full / notes on shortage">
+    </label>
+
+    <div class="form-actions">
+      <button class="button primary" type="submit">Confirm Receipt &amp; Post Stock IN</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

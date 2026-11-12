@@ -2,6 +2,19 @@
 {% block title %}CSMS V2 — Stock{% endblock %}
 {% block page_title %}Stock{% endblock %}
 {% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">GENERAL STORE · CONSUMABLE BALANCES</div>
+    <h1>General Store Stock Balances</h1>
+    <p class="muted small">Ledger-derived consumable stock by Store and Financial Year (Paper Warehouse balances live separately under Paper Warehouse).</p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/app/registers/item-stock{% if selected_store %}?store_id={{ selected_store.id }}{% if selected_fy %}&financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}">Stock Register</a>
+    {% if "STOCK_OPENING_CREATE" in permissions %}
+    <a class="button primary" href="/app/opening-stock/new">+ Opening Stock</a>
+    {% endif %}
+  </div>
+</div>
 <div class="context-bar">
   <div class="context-title">Stock context</div>
   <form method="get" action="/app/stock" class="context-form">

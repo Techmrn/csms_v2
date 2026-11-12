@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Request Paper Stock{% endblock %}
+{% block page_title %}New Section Paper Request{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">SECTION PAPER REQUISITION · PRESS WAREHOUSE</div>
+    <h1>Request Paper from Press Warehouse</h1>
+    <p class="muted small">Submit an online paper request for your section. The Press Warehouseman will verify stock and issue paper.</p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/app/paper/indents">← My Section Requests</a>
+  </div>
+</div>
+
+<form method="post" action="/app/paper/online-indents/new" class="card form-card stack">
+  <div class="grid cols-4">
+    <label>
+      Target Paper Warehouse *
+      <select name="store_id" required>
+        {% for st in paper_stores %}
+        <option value="{{ st.id }}" {% if selected_store and selected_store.id == st.id %}selected{% endif %}>
+          {{ st.name }} ({{ st.office.name if st.office else st.code }})
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Requesting Section
+      <input type="text" value="{{ user.section.name if user.section else 'Assigned Section' }}" readonly>
+    </label>
+    <label>
+      Request Date *
+      <input type="date" name="indent_date" value="{{ today }}" required>
+    </label>
+    <label>
+      Financial Year
+      <select name="financial_year_id">
+        {% for fy in financial_years %}
+        <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>
+          {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <div class="grid cols-2">
+    <label>
+      Work Order / Job No
+      <input name="job_no" placeholder="e.g. JOB/GAZ/2026-102">
+    </label>
+    <label>
+      Purpose / Printing Notes
+      <input name="remarks" placeholder="Publication title, machine requirement, urgency">
+    </label>
+  </div>
+
+  <div class="section-head" style="margin-top: 8px;">
+    <div>
+      <div class="eyebrow">PAPER VARIETIES REQUIRED</div>
+      <h3>Requested Paper Lines</h3>
+    </div>
+    <button type="button" class="button sm" onclick="addReqRow()">+ Add Paper Row</button>
+  </div>
+
+  <div class="card table-card" style="overflow-x: auto;">
+    <table>
+      <thead>
+        <tr>
+          <th style="min-width: 280px;">Paper Variety *</th>
+          <th>Form</th>
+          <th style="min-width: 280px;">Requested Quantity *</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="req-rows-body">
+        <tr class="req-row">
+          <td>
+            <select name="paper_item_id" onchange="syncReqRow(this)" required>
+              <option value="">-- Select Paper Item --</option>
+              {% for item in paper_items %}
+              <option value="{{ item.id }}"
+                      data-form="{{ item.form_type }}"
+                      data-spr="{{ item.sheets_per_ream or 500 }}">
+                {{ item.code }} — {{ item.name }} ({{ item.gsm }} GSM · {{ item.form_type }})
+              </option>
+              {% endfor %}
+            </select>
+          </td>
+          <td><span class="badge form-badge">—</span></td>
+          <td>
+            <div class="sheet-box split-qty">
+              <input type="number" name="requested_reams" min="0" step="1" value="0" aria-label="Reams">
+              <span class="unit-tag">Reams</span>
+              <input type="number" name="requested_sheets" min="0" step="1" value="0" aria-label="Sheets">
+              <span class="unit-tag">Sheets</span>
+            </div>
+            <div class="reel-box" style="display: none;">
+              <div class="split-qty">
+                <input type="number" name="weight_kg" min="0" step="0.001" value="0" aria-label="Weight KG">
+                <span class="unit-tag">KG</span>
+              </div>
+            </div>
+            <div class="muted small spr-note" style="margin-top: 4px;"></div>
+          </td>
+          <td>
+            <button type="button" class="button sm" onclick="removeReqRow(this)">Remove</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="form-actions">
+    <a class="button" href="/app/paper/indents">Cancel</a>
+    <button type="submit" class="button primary">Submit Paper Request</button>
+  </div>
+</form>
+
+<script>
+function syncReqRow(sel) {
+  const row = sel.closest('tr');
+  const opt = sel.options[sel.selectedIndex];
+  const form = opt ? (opt.dataset.form || '') : '';
+  const spr = opt ? (opt.dataset.spr || '500') : '500';
+  const badge = row.querySelector('.form-badge');
+  const sheetBox = row.querySelector('.sheet-box');
+  const reelBox = row.querySelector('.reel-box');
+  const note = row.querySelector('.spr-note');
+
+  if (form === 'REEL') {
+    badge.textContent = 'REEL (KG)';
+    badge.className = 'badge warn form-badge';
+    sheetBox.style.display = 'none';
+    reelBox.style.display = 'block';
+    row.querySelector('input[name="requested_reams"]').value = '0';
+    row.querySelector('input[name="requested_sheets"]').value = '0';
+    note.textContent = 'Enter requested weight in Kilograms (KG)';
+  } else {
+    badge.textContent = form === 'SHEET' ? 'SHEET (REAM)' : '—';
+    badge.className = form === 'SHEET' ? 'badge ok form-badge' : 'badge form-badge';
+    sheetBox.style.display = 'flex';
+    reelBox.style.display = 'none';
+    row.querySelector('input[name="weight_kg"]').value = '0';
+    note.textContent = form === 'SHEET' ? ('1 Ream = ' + spr + ' Sheets') : '';
+  }
+}
+
+function addReqRow() {
+  const tbody = document.getElementById('req-rows-body');
+  const clone = tbody.querySelector('tr.req-row').cloneNode(true);
+  clone.querySelector('select[name="paper_item_id"]').selectedIndex = 0;
+  clone.querySelector('input[name="requested_reams"]').value = '0';
+  clone.querySelector('input[name="requested_sheets"]').value = '0';
+  clone.querySelector('input[name="weight_kg"]').value = '0';
+  syncReqRow(clone.querySelector('select[name="paper_item_id"]'));
+  tbody.appendChild(clone);
+}
+
+function removeReqRow(btn) {
+  const tbody = document.getElementById('req-rows-body');
+  if (tbody.querySelectorAll('tr.req-row').length > 1) {
+    btn.closest('tr').remove();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#req-rows-body select[name="paper_item_id"]').forEach(syncReqRow);
+});
+</script>
+{% endblock %}

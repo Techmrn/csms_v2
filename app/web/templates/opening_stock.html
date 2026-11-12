@@ -2,6 +2,18 @@
 {% block title %}CSMS V2 — Opening Stock{% endblock %}
 {% block page_title %}Opening Stock{% endblock %}
 {% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">GENERAL STORE · INITIALIZATION &amp; FY CARRY-FORWARD</div>
+    <h1>Store Opening Stock</h1>
+    <p class="muted small">One-time consumable &amp; asset setup balances and Financial Year carry-forward postings for General Stores.</p>
+  </div>
+  <div class="page-actions">
+    {% if "STOCK_OPENING_CREATE" in permissions %}
+    <a class="button primary" href="/app/opening-stock/new{% if selected_store %}?store_id={{ selected_store.id }}{% if selected_fy %}&financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}">+ Enter Opening Stock</a>
+    {% endif %}
+  </div>
+</div>
 <div class="context-bar">
   <div>
     <div class="context-title">Opening stock register</div>

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}CSMS V2 — Paper Warehouse Opening Stock{% endblock %}
+{% block page_title %}Paper Warehouse Opening Stock{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="eyebrow">PAPER WAREHOUSE · INITIALIZATION &amp; FY CARRY-FORWARD</div>
+    <h1>Warehouse Opening Stock</h1>
+    <p class="muted small">First-time warehouse initialization and automatic Financial Year closing balance carry-forwards.</p>
+  </div>
+  <div class="page-actions">
+    {% if "PAPER_OPENING_CREATE" in permissions %}
+    <a class="button primary" href="/app/paper/opening-stock/new{% if selected_store %}?store_id={{ selected_store.id }}{% if selected_fy %}&financial_year_id={{ selected_fy.id }}{% endif %}{% endif %}">+ Enter Opening Stock</a>
+    {% endif %}
+  </div>
+</div>
+
+<form class="context-bar" method="get" action="/app/paper/opening-stock">
+  <div class="ctx-field">
+    <span class="ctx-label">Press Warehouse</span>
+    <select name="store_id" onchange="this.form.submit()">
+      {% for st in paper_stores %}
+      <option value="{{ st.id }}" {% if selected_store and selected_store.id == st.id %}selected{% endif %}>
+        {{ st.name }} ({{ st.office.name if st.office else st.code }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="ctx-field">
+    <span class="ctx-label">Financial Year</span>
+    <select name="financial_year_id" onchange="this.form.submit()">
+      {% for fy in financial_years %}
+      <option value="{{ fy.id }}" {% if selected_fy and selected_fy.id == fy.id %}selected{% endif %}>
+        {{ fy.year_name }}{% if fy.is_current %} (Current){% endif %}{% if fy.is_closed %} [Closed]{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+</form>
+
+<div class="card table-card">
+  <table>
+    <thead>
+      <tr>
+        <th>Opening No</th>
+        <th>Date</th>
+        <th>Warehouse</th>
+        <th>Financial Year</th>
+        <th>Type</th>
+        <th class="num">Items</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for op in openings %}
+      <tr>
+        <td><strong>{{ op.opening_no }}</strong></td>
+        <td>{{ op.opening_date }}</td>
+        <td>{{ op.store.name if op.store else op.store_id }}</td>
+        <td>{{ op.financial_year.year_name if op.financial_year else op.financial_year_id }}</td>
+        <td>
+          {% if op.opening_type == 'CARRY_FORWARD' %}
+          <span class="badge info">CARRY FORWARD</span>
+          {% else %}
+          <span class="badge ok">INITIAL SETUP</span>
+          {% endif %}
+        </td>
+        <td class="num">{{ op.lines|length }}</td>
+        <td><span class="badge ok">{{ op.status }}</span></td>
+        <td><a class="button sm" href="/app/paper/opening-stock/{{ op.id }}">View Voucher</a></td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="muted" style="text-align: center; padding: 28px;">
+          No Paper Warehouse opening stock documents found for the selected warehouse and financial year.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
